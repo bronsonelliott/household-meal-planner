@@ -14,12 +14,14 @@ import { imessageAdapterConfig } from "./messaging/imessage/settings.ts";
 import { diagnoseWhatsApp } from "./messaging/whatsapp/diagnose.ts";
 import { whatsappAdapterConfig } from "./messaging/whatsapp/settings.ts";
 import { ProfileError, readProfile } from "./data/profile.ts";
+import { tagCoverageWarnings } from "./onboarding/validate.ts";
 import { diagnoseProviders, providerNotes } from "./recipes/providers/diagnose.ts";
 import type { ProviderDeps } from "./recipes/providers/index.ts";
 
 export interface DoctorReport {
   ok: boolean;
   problems: string[];
+  warnings?: string[]; // worth knowing, but the setup still works
   lines: string[]; // what to print
 }
 
@@ -28,6 +30,7 @@ type Env = Record<string, string | undefined>;
 export function runDoctor(env: Env = process.env): DoctorReport {
   const problems: string[] = [];
   const notes: string[] = [];
+  const warnings: string[] = [];
   let config: AppConfig | null = null;
 
   try {
@@ -46,6 +49,7 @@ export function runDoctor(env: Env = process.env): DoctorReport {
       try {
         const profile = readProfile(profilePath);
         notes.push(`Profile: ${profilePath} (${profile.usualDishes.length} usual dishes, ${profile.grocerySections.length} grocery sections)`);
+        warnings.push(...tagCoverageWarnings(profile.rules, [...profile.usualDishes, ...profile.alsoLikeDishes]).map((warning) => `profile: ${warning}`));
       } catch (error) {
         problems.push(`profile: ${error instanceof ProfileError ? error.message : (error as Error).message}`);
       }
@@ -72,9 +76,10 @@ export function runDoctor(env: Env = process.env): DoctorReport {
     ...(c.messaging.platform === "whatsapp" ? whatsappNotes(c) : []),
     ...(c.messaging.platform === "imessage" ? imessageNotes(c) : []),
     ...providerNotes(c.recipes, env),
+    ...(warnings.length > 0 ? ["Worth a look (not blocking):", ...warnings.map((warning) => `  - ${warning}`)] : []),
     "Nothing was started and nothing was sent.",
   ];
-  return { ok: true, problems, lines };
+  return { ok: true, problems, warnings, lines };
 }
 
 // What the WhatsApp setup says about itself without asking Meta anything.

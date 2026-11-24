@@ -152,6 +152,32 @@ export function readProfile(profilePath: string): HouseProfile {
   return parseProfile(readFileSync(profilePath, "utf8"));
 }
 
+// What the profile file says about the household's setup, shared by the bridge, the doctor and
+// the house-rules interview:
+//   setup-needed  there is no file, or it holds only whitespace
+//   ready         it parses
+//   error         it has text but cannot be read; the message says why. The file is never touched.
+export type ProfileStatus =
+  | { kind: "setup-needed" }
+  | { kind: "ready"; profile: HouseProfile; text: string }
+  | { kind: "error"; message: string };
+
+export function readProfileStatus(profilePath: string): ProfileStatus {
+  if (!existsSync(profilePath)) return { kind: "setup-needed" };
+  let text: string;
+  try {
+    text = readFileSync(profilePath, "utf8");
+  } catch (error) {
+    return { kind: "error", message: `I couldn't read the profile at ${profilePath}: ${(error as Error).message}` };
+  }
+  if (text.trim() === "") return { kind: "setup-needed" };
+  try {
+    return { kind: "ready", profile: parseProfile(text), text };
+  } catch (error) {
+    return { kind: "error", message: error instanceof ProfileError ? error.message : (error as Error).message };
+  }
+}
+
 export function parseProfile(text: string): HouseProfile {
   const lines = text.split("\n");
   const body = (heading: string): string[] => {
@@ -543,6 +569,12 @@ export function undoLastChange(files: ProfileFiles, who: string, now = new Date(
 function commitChange(files: ProfileFiles, who: string, now: Date, description: string, edit: (text: string) => string): void {
   const { before, after } = updateProfileText(files.profilePath, edit);
   const record: LastChange = { at: now.toISOString(), who, description, before, after };
+  writeFileAtomically(files.lastChangePath, JSON.stringify(record, null, 2));
+}
+
+// Writes the "undo" record for a change made some other way (the interview replacing the whole file).
+export function recordLastChange(files: ProfileFiles, who: string, description: string, before: string, after: string, at: Date): void {
+  const record: LastChange = { at: at.toISOString(), who, description, before, after };
   writeFileAtomically(files.lastChangePath, JSON.stringify(record, null, 2));
 }
 

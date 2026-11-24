@@ -60,6 +60,7 @@ import {
   type IngredientRequest,
   type Operation,
 } from "./changeset.ts";
+import type { OnboardingExtractOutcome, OnboardingExtractRequest } from "../onboarding/state.ts";
 import { BatchJournal, journalPath, type JournalEntry, type JournalRecord, type LogAction, type Step } from "./journal.ts";
 import type { ScheduleConfig } from "../config.ts";
 import { injectFills, loggedNights, nightsNeedingIngredients, planWeeks, resolveDish, resolveTargetWeek } from "./plan.ts";
@@ -120,6 +121,8 @@ export interface Brain {
   handle(request: BrainRequest): Promise<BrainResult>;
   // At lock, ingredient lines for the nights that have none. Only those nights.
   fillIngredients(requests: IngredientRequest[]): Promise<IngredientFill[]>;
+  // The house-rules interview: read one batch of answers. Optional so test stubs need not have it.
+  extractOnboarding?(request: OnboardingExtractRequest): Promise<OnboardingExtractOutcome>;
 }
 
 // ---------------------------------------------------------------------------------------------

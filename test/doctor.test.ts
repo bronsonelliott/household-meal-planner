@@ -81,3 +81,20 @@ describe("bun run doctor", () => {
     expect(broken.stdout.toString()).toContain("Not ready yet");
   });
 });
+
+describe("doctor: tags no dish carries", () => {
+  test("warns, without failing, when a rule's tag is on no dish", () => {
+    const { readFileSync } = require("node:fs");
+    const profile = readFileSync(EXAMPLE_PROFILE, "utf8").replace("- At least one pasta night a week. [min pasta 1]", "- Sushi twice a week. [min sushi 2]");
+    const report = runDoctor(household({ profile }).env);
+    expect(report.ok).toBe(true);
+    expect(report.warnings?.[0]).toContain('needs a dish tagged "sushi"');
+    expect(report.lines.join("\n")).toContain("Worth a look (not blocking):");
+  });
+
+  test("the example profile has no warnings", () => {
+    const report = runDoctor(household().env);
+    expect(report.warnings).toEqual([]);
+    expect(report.lines.join("\n")).not.toContain("Worth a look");
+  });
+});

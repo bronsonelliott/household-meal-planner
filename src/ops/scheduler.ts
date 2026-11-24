@@ -32,6 +32,7 @@ import { join } from "node:path";
 import { BrainError } from "../brain/claude.ts";
 import { writeFileAtomically } from "../data/files.ts";
 import type { SendOutcome } from "../messaging/types.ts";
+import type { OnboardingExtractOutcome, OnboardingExtractRequest } from "../onboarding/state.ts";
 import type { IngredientFill, IngredientRequest } from "../week/changeset.ts";
 import type { ScheduleConfig } from "../config.ts";
 import { NIGHTS } from "../data/profile.ts";
@@ -360,6 +361,13 @@ export class FailurePolicy implements Brain {
 
   async fillIngredients(requests: IngredientRequest[]): Promise<IngredientFill[]> {
     return this.call(() => this.options.brain.fillIngredients(requests));
+  }
+
+  // The house-rules interview's reading call gets the same outage and auth-stop handling.
+  async extractOnboarding(request: OnboardingExtractRequest): Promise<OnboardingExtractOutcome> {
+    const extract = this.options.brain.extractOnboarding;
+    if (!extract) throw new Error("This brain cannot read interview answers.");
+    return this.call(() => extract.call(this.options.brain, request));
   }
 
   // ----- What the bridge routes here -----

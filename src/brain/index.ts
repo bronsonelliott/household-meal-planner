@@ -35,6 +35,8 @@ import { resolveTargetWeek } from "../week/plan.ts";
 import type { Brain, BrainContext, BrainReply, BrainRequest, BrainResult } from "../week/worker.ts";
 import { BrainError, createClaudeCaller, type CallModel, type ClaudeCallerOptions } from "./claude.ts";
 import { checkWeek, dishWords, nightFromChange, nightFromStored, type AddedDish, type CheckWeekNights } from "./rule-check.ts";
+import { emptyExtraction, type ExtractionResult, type OnboardingExtractOutcome, type OnboardingExtractRequest } from "../onboarding/state.ts";
+import { ONBOARDING_PROMPT_PATH, parseExtraction, renderExtractRequest } from "./onboarding.ts";
 import { parseIngredientFills, parseModelOutput, stripModelOnlyFields, type ModelOutput } from "./schema.ts";
 
 export { BrainError, type BrainErrorClass } from "./claude.ts";
@@ -136,6 +138,29 @@ export class ClaudeBrain implements Brain {
     throw new BrainError("parse", `The ingredient lines were unusable twice: ${attempt.problems.join("; ")}`);
   }
 
+  // ----- The house-rules interview -----
+
+  // Reads one batch of interview answers. A call that fails throws a BrainError, like every other
+  // request, so the failure policy can wrap it. An answer that stays unusable after the one retry
+  // comes back as { ok: false, problems }: the interview keeps what it had and asks for a rephrase.
+  async extractOnboarding(request: OnboardingExtractRequest): Promise<OnboardingExtractOutcome> {
+    if (request.batch.length === 0) return { ok: true, result: emptyExtraction() };
+    const system = renderPrompt(readFileSync(ONBOARDING_PROMPT_PATH, "utf8"), {
+      botName: this.settings.botName,
+      memberNames: joinWords(this.settings.memberNames),
+      weeknights: describeNights(this.settings.weeknights),
+    });
+    const attempt = await this.twoAttempts<ExtractionResult>(
+      renderExtractRequest(request),
+      (answer) => {
+        const parsed = parseExtraction(answer, request);
+        return parsed.ok ? { kind: "ok", value: parsed.value } : { kind: "unparseable", problems: parsed.problems };
+      },
+      system,
+    );
+    return attempt.kind === "ok" ? { ok: true, result: attempt.value } : { ok: false, problems: attempt.problems };
+  }
+
   // ----- A message batch -----
 
   private async messages(request: Extract<BrainRequest, { kind: "messages" }>, prompt: string): Promise<BrainResult> {
@@ -235,11 +260,11 @@ export class ClaudeBrain implements Brain {
   // ----- Shared -----
 
   // At most two model calls: the first, and one retry with every problem named.
-  private async twoAttempts<T>(prompt: string, grade: (answer: string) => Attempt<T>): Promise<Attempt<T>> {
+  private async twoAttempts<T>(prompt: string, grade: (answer: string) => Attempt<T>, system: string = this.system): Promise<Attempt<T>> {
     let currentPrompt = prompt;
     let last: Attempt<T> | null = null;
     for (let attempt = 1; attempt <= 2; attempt++) {
-      const answer = await this.callModel({ system: this.system, prompt: currentPrompt });
+      const answer = await this.callModel({ system, prompt: currentPrompt });
       last = grade(answer.text);
       if (last.kind === "ok") return last;
       this.log(`model answer ${attempt} of 2 was unusable: ${last.problems.join("; ")}`);

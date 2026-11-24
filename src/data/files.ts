@@ -1,6 +1,7 @@
 // Two ways the agent writes files so a crash or a sync never leaves a half-written one.
 
-import { closeSync, fsyncSync, openSync, renameSync, writeFileSync, writeSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { closeSync, existsSync, fsyncSync, openSync, readFileSync, renameSync, writeFileSync, writeSync } from "node:fs";
 
 // Writes to a temp file beside the target, then renames it into place, so a reader (or a sync tool)
 // never sees a half-written file.
@@ -20,4 +21,14 @@ export function appendLineDurably(path: string, record: object): void {
   } finally {
     closeSync(fd);
   }
+}
+
+// A short fingerprint of some text, used to tell "the same bytes" from "someone edited it".
+export function fingerprintText(text: string): string {
+  return createHash("sha256").update(text).digest("hex");
+}
+
+// The fingerprint of a file's current bytes, or "none" when there is no file.
+export function fingerprintFile(path: string): string {
+  return existsSync(path) ? fingerprintText(readFileSync(path, "utf8")) : "none";
 }
