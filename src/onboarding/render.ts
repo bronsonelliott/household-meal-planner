@@ -171,7 +171,7 @@ export function renderReadBack(proposal: Proposal, options: ReadBackOptions): st
   if (proposal.defaults.thresholds) {
     defaults.push(`Limits I'm starting with: at most ${t.maxUsualDishesPerWeek} usual dishes a week, no protein on more than ${t.maxNightsPerProtein} nights, and no repeating a dish within ${t.repeatWindowWeeks} weeks.`);
   }
-  defaults.push('A dish counts for a rule if its protein or its tags match (a "chicken" dish counts as "chicken").');
+  defaults.push('A dish counts for a rule if its protein, tags or protein group match (beef counts as "red-meat").');
   if (defaults.length > 0) blocks.push(["Things I filled in myself:", ...defaults, "You can change any of this later."]);
 
   // Flags and changes

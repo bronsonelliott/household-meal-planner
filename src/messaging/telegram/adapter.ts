@@ -41,11 +41,20 @@ const TELEGRAM_MAX_CHARS = 4096;
 const BATCH_SIZE = 100;
 
 // A failed poll the loop should wait out and try again, or one it cannot recover from.
+// A long poll may legitimately stay open for its whole `timeout`, so our own give-up time must be
+// comfortably longer than that, whatever the general request timeout is set to.
+export const POLL_SLACK_MS = 15_000;
+
+// A poll that simply got no answer in time loses nothing (the offset has not moved), so it is
+// only worth a log line if it keeps happening.
+const QUIET_TIMEOUTS = 2;
+
 class PollError extends Error {
   constructor(
     message: string,
     readonly fatal = false,
     readonly retryAfterMs?: number,
+    readonly timedOut = false,
   ) {
     super(message);
   }
@@ -172,7 +181,7 @@ export class TelegramAdapter implements MessagingAdapter {
     const answer = await this.api.call(
       "getUpdates",
       { offset, limit: BATCH_SIZE, timeout: timeoutSec, allowed_updates: ["message"] },
-      { timeoutMs: timeoutSec * 1000 + this.config.requestTimeoutMs, signal: this.stopSignal.signal },
+      { timeoutMs: timeoutSec * 1000 + Math.max(this.config.requestTimeoutMs, POLL_SLACK_MS), signal: this.stopSignal.signal },
     );
     if (answer.kind === "aborted") return 0;
     if (answer.kind !== "ok") throw this.pollFailure(answer);
@@ -200,7 +209,7 @@ export class TelegramAdapter implements MessagingAdapter {
       }
       if (answer.errorCode === 429) return new PollError(describeAnswer(answer), false, (answer.parameters.retry_after ?? 1) * 1000);
     }
-    return new PollError(describeAnswer(answer));
+    return new PollError(describeAnswer(answer), false, undefined, answer.kind === "timeout");
   }
 
   private async handleUpdate(update: any): Promise<void> {
@@ -217,13 +226,16 @@ export class TelegramAdapter implements MessagingAdapter {
     const log = this.handlers!.log;
     const delays = this.config.pollRetryDelaysMs;
     let failures = 0;
+    let timeouts = 0;
     while (this.running) {
       try {
         await this.pollOnce(this.config.pollTimeoutSec);
         failures = 0;
+        timeouts = 0;
       } catch (error) {
         if (!this.running) return;
         const problem = error as PollError;
+        if (problem.timedOut && ++timeouts <= QUIET_TIMEOUTS) continue; // just ask again
         this.lastPollError = problem.message;
         log(`Telegram polling problem: ${problem.message}`);
         if (problem.fatal) {

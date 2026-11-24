@@ -653,7 +653,7 @@ function readModel(raw: Table, problems: string[]): ModelConfig {
     id: readString(table, "id", "model", problems, DEFAULT_MODEL)!,
     apiKeyEnv: readEnvName(table, "apiKeyEnv", "model", problems, "ANTHROPIC_API_KEY"),
     timeoutMs: readInteger(table, "timeoutMs", "model", problems, 120_000, 1000),
-    maxOutputTokens: readInteger(table, "maxOutputTokens", "model", problems, 4096, 256),
+    maxOutputTokens: readInteger(table, "maxOutputTokens", "model", problems, 8192, 256),
   };
 }
 

@@ -130,6 +130,12 @@ export interface PendingSnapshot {
   deliveredSeq: number | null;
 }
 
+export interface LastAsk {
+  topic: TopicId;
+  delivered: boolean; // the send was confirmed
+  reasked: boolean; // this is the "in case my last message didn't reach you" repeat
+}
+
 export interface OnboardingState {
   schemaVersion: typeof ONBOARDING_SCHEMA_VERSION;
   phase: Phase;
@@ -147,6 +153,9 @@ export interface OnboardingState {
   revision: number; // goes up every time the proposal could change
   lastReadBack: ReadBackRecord | null;
   pendingSnapshot: PendingSnapshot | null;
+  // How the last question went out. A question whose send was never confirmed (unknown, failed,
+  // queued) may not have been seen, so it is asked again. Missing in older files.
+  lastAsk?: LastAsk | null;
   // The profile file's fingerprint when the interview began: "none" for a first run.
   originalFingerprint: string;
   // Goes up with every write of this file. A write older than what is on disk is never applied,
@@ -226,6 +235,24 @@ export function newOnboardingState(mode: Mode, originalFingerprint: string, now:
 // The welcome has gone out: the first question is the one being asked.
 export function startAsking(state: OnboardingState, now: Date): OnboardingState {
   return touch({ ...state, phase: "asking", currentTopic: nextTopic(state) }, now);
+}
+
+// Notes how the question for `topic` went out.
+export function recordAsk(state: OnboardingState, topic: TopicId, delivered: boolean, reasked: boolean, now: Date): OnboardingState {
+  return touch({ ...state, lastAsk: { topic, delivered, reasked } }, now);
+}
+
+// The topic being waited on, when its question may never have been seen; otherwise null.
+export function unconfirmedQuestion(state: OnboardingState): TopicId | null {
+  const ask = state.lastAsk;
+  if (state.phase !== "asking" || state.currentTopic === null || !ask) return null;
+  return ask.topic === state.currentTopic && !ask.delivered ? state.currentTopic : null;
+}
+
+// True at start-up when that unseen question has not been repeated yet. After one repeat a
+// restart leaves it alone, so restarts never loop; an adult's next message can still prompt another.
+export function needsStartupReask(state: OnboardingState): boolean {
+  return unconfirmedQuestion(state) !== null && state.lastAsk?.reasked !== true;
 }
 
 export function withPhase(state: OnboardingState, phase: Phase, now: Date): OnboardingState {

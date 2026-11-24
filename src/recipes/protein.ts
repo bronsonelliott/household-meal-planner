@@ -65,3 +65,46 @@ function firstMatch(words: string[]): string | null {
   }
   return null;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Protein groups
+// ---------------------------------------------------------------------------------------------
+// Rules talk in families ("red-meat", "seafood"), but dishes name one protein ("beef", "salmon").
+// This small table says which proteins belong to which family, so a beef dish counts for a
+// "max red-meat 2" rule even when nobody tagged it. Explicit tags keep working as before.
+
+const FISH = ["fish", "salmon", "tuna", "cod", "tilapia", "halibut", "trout", "haddock", "mackerel", "sardines", "anchovies", "snapper", "bass", "monkfish", "catfish", "mahi-mahi", "swordfish"];
+const SHELLFISH = ["shellfish", "shrimp", "prawn", "prawns", "crab", "lobster", "scallop", "scallops", "mussels", "clams", "oysters"];
+
+export const PROTEIN_GROUPS: Record<string, string[]> = {
+  "red-meat": ["beef", "pork", "lamb", "goat", "veal", "venison", "bison"],
+  fish: FISH,
+  shellfish: SHELLFISH,
+  seafood: [...FISH, ...SHELLFISH],
+  poultry: ["chicken", "turkey", "duck"],
+};
+
+// The groups a protein belongs to ("beef" -> ["red-meat"], "salmon" -> ["fish", "seafood"]).
+export function groupsOfProtein(protein: string | null): string[] {
+  const wanted = (protein ?? "").trim().toLowerCase();
+  if (wanted === "") return [];
+  return Object.entries(PROTEIN_GROUPS).filter(([, members]) => members.includes(wanted)).map(([group]) => group);
+}
+
+// Does a dish with this protein and these tags count for a rule about `tag`? Yes if the tag is
+// its protein, one of its tags, or a group its protein belongs to.
+export function dishCountsFor(protein: string | null, tags: readonly string[], tag: string): boolean {
+  const wanted = tag.trim().toLowerCase();
+  if ((protein ?? "").trim().toLowerCase() === wanted) return true;
+  if (tags.some((t) => t.trim().toLowerCase() === wanted)) return true;
+  return groupsOfProtein(protein).includes(wanted);
+}
+
+// What the "no protein on more than N nights" cap counts a protein as: all fish species are one
+// protein, all shellfish are one protein, and everything else is itself.
+export function capGroupOf(protein: string): string {
+  const wanted = protein.trim().toLowerCase();
+  if (FISH.includes(wanted)) return "fish";
+  if (SHELLFISH.includes(wanted)) return "shellfish";
+  return wanted;
+}

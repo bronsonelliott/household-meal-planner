@@ -432,7 +432,7 @@ describe("locking and the list", () => {
 
     const reply = h.sent[0]!;
     expect(reply).toContain("\n• Tuesday: Chicken tacos (Mexican night, Alex's pick)\n");
-    expect(reply).toContain("\n- chicken thighs, 2 lb + 2 lb\n");
+    expect(reply).toContain("\n- chicken thighs, 4 lb\n");
     expect(reply).not.toContain("tortillas");
     expect(reply.indexOf("Dinners for Oct 5 to Oct 11:")).toBeLessThan(reply.indexOf("Grocery list for"));
     expect(logText(h)).toContain("- Tuesday: Chicken tacos (chicken) (swapped from draft)\n");
@@ -500,7 +500,7 @@ describe("locking and the list", () => {
         "Drop (Sauces & Oils): marinara, 1 jar",
         "Drop (Dairy): parmesan",
         "Drop (Pasta & Rice): spaghetti, 1 lb",
-        "Change (Meat & Fish): ground beef, 2 lb (was ground beef, 1 lb + 2 lb)",
+        "Change (Meat & Fish): ground beef, 2 lb (was ground beef, 3 lb)",
       ].join("\n"),
     )).toBe(true);
     const log = logText(h);

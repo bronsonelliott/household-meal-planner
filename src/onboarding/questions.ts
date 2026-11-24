@@ -17,6 +17,9 @@ export const TOPIC_QUESTIONS: Record<TopicId, string> = {
     'Last one, and you can skip it: what do you always keep in the house, and how is your grocery store laid out, aisle by aisle? Say "skip" and I\'ll use a standard layout.',
 };
 
+// Said before a question that may not have reached the household the first time.
+export const REASK_PREFIX = "In case my last message didn't reach you:";
+
 export function questionFor(topic: TopicId): string {
   return TOPIC_QUESTIONS[topic];
 }

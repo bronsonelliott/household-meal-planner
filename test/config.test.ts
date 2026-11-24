@@ -48,7 +48,7 @@ describe("the example config", () => {
     expect(config.planning).toEqual({ weeknights: ["monday", "tuesday", "wednesday", "thursday"], minDiscoveryNights: 1 });
     expect(config.messaging.platform).toBe("signal");
     expect(config.messaging.mode).toBe("group");
-    expect(config.model).toEqual({ id: "claude-sonnet-5-5", apiKeyEnv: "ANTHROPIC_API_KEY", timeoutMs: 120000, maxOutputTokens: 4096 });
+    expect(config.model).toEqual({ id: "claude-sonnet-5-5", apiKeyEnv: "ANTHROPIC_API_KEY", timeoutMs: 120000, maxOutputTokens: 8192 });
     expect(config.recipes.secondsBetweenRequests).toBe(5);
     expect(config.alerts.channel).toBe("none");
     expect(config.dryRun).toBe(false);

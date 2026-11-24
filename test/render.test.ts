@@ -127,7 +127,7 @@ describe("the seven lines", () => {
 });
 
 describe("the grocery list", () => {
-  test("usual dishes: every ingredient under its grocery section, shared ones merged with both quantities", () => {
+  test("usual dishes: every ingredient under its grocery section, shared ones merged with their quantities added", () => {
     const week = emptyWeekFile("2026-10-05");
     week.status = "locked";
     week.nights.monday = night(TACOS);
@@ -148,7 +148,7 @@ describe("the grocery list", () => {
         "- cilantro",
         "",
         "Meat & Fish",
-        "- chicken thighs, 2 lb + 1 lb",
+        "- chicken thighs, 3 lb",
         "- ground beef, 1 lb",
         "",
         "Condiments",
@@ -218,7 +218,7 @@ describe("the grocery list", () => {
         "Drop (Sauces & Oils): marinara, 1 jar",
         "Drop (Dairy): parmesan",
         "Drop (Pasta & Rice): spaghetti, 1 lb",
-        "Change (Meat & Fish): ground beef, 2 lb (was ground beef, 1 lb + 2 lb)",
+        "Change (Meat & Fish): ground beef, 2 lb (was ground beef, 3 lb)",
       ].join("\n"),
     );
     expect(renderListDelta(after, afterList, afterList)).toBeNull();

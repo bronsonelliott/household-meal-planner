@@ -194,7 +194,7 @@ apiKeyEnv = "ANTHROPIC_API_KEY"
 # How long to wait for one answer before giving up, in milliseconds (120000 = 2 minutes).
 timeoutMs = 120000
 # The longest answer the model may write, in tokens.
-maxOutputTokens = 4096
+maxOutputTokens = 8192
 
 
 # ---------------------------------------------------------------------------------------------

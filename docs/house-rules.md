@@ -78,6 +78,23 @@ The rules count those words. Two helpful facts:
 - **New dishes get tags from the model.** When the bot suggests a dish you have never made, it
   tags it itself, using the words your rules use. Your own dishes use the tags you wrote.
 
+### Protein groups
+
+A dish also counts for the family its protein belongs to, so `[max red-meat 2]` catches a beef
+dish even if nobody wrote `red-meat` on it. The built-in families:
+
+| Rule word | Proteins it covers |
+|---|---|
+| `red-meat` | beef, pork, lamb, goat, veal, venison, bison |
+| `poultry` | chicken, turkey, duck |
+| `fish` | salmon, tuna, cod, tilapia, halibut, trout and other fish |
+| `shellfish` | shrimp, crab, lobster, scallops, mussels, clams |
+| `seafood` | all the fish and shellfish above |
+
+The "no protein on more than N nights" limit also treats all fish as one protein and all shellfish
+as one, so salmon, tuna and cod on three nights count as three fish nights. Tags you write
+yourself keep working exactly as before.
+
 The golden rule: **the tag in a rule has to be on the dishes you actually cook.** Pick your
 rules first, then add the matching words to the `Tags:` lines of the dishes you cook most.
 

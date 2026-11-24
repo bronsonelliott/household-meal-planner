@@ -106,6 +106,12 @@ type Attempt<T> =
   | { kind: "unparseable"; problems: string[] }
   | { kind: "broken"; value: T; problems: string[] };
 
+export const CUT_OFF_PROBLEM = "the answer was cut off because it ran past the model's output limit (raise maxOutputTokens in config.toml if this keeps happening)";
+
+// A week's ingredient lines can run long (up to seven dishes of fifteen lines or more, as JSON),
+// so this call asks for more room than the everyday limit.
+export const FILL_MAX_TOKENS = 16_000;
+
 export class ClaudeBrain implements Brain {
   private system: string;
   private callModel: CallModel;
@@ -133,7 +139,7 @@ export class ClaudeBrain implements Brain {
     const attempt = await this.twoAttempts<IngredientFill[]>(renderFillRequest(requests, this.lastSections), (answer) => {
       const parsed = parseIngredientFills(answer, requests, this.lastSections);
       return parsed.ok ? { kind: "ok", value: parsed.value } : { kind: "unparseable", problems: parsed.problems };
-    });
+    }, this.system, FILL_MAX_TOKENS);
     if (attempt.kind === "ok") return attempt.value;
     throw new BrainError("parse", `The ingredient lines were unusable twice: ${attempt.problems.join("; ")}`);
   }
@@ -260,12 +266,13 @@ export class ClaudeBrain implements Brain {
   // ----- Shared -----
 
   // At most two model calls: the first, and one retry with every problem named.
-  private async twoAttempts<T>(prompt: string, grade: (answer: string) => Attempt<T>, system: string = this.system): Promise<Attempt<T>> {
+  private async twoAttempts<T>(prompt: string, grade: (answer: string) => Attempt<T>, system: string = this.system, maxTokens?: number): Promise<Attempt<T>> {
     let currentPrompt = prompt;
     let last: Attempt<T> | null = null;
     for (let attempt = 1; attempt <= 2; attempt++) {
-      const answer = await this.callModel({ system, prompt: currentPrompt });
-      last = grade(answer.text);
+      const answer = await this.callModel({ system, prompt: currentPrompt, ...(maxTokens ? { maxTokens } : {}) });
+      // A cut-off answer is never graded as if it were whole: it may even parse, with the end missing.
+      last = answer.cutOff ? { kind: "unparseable", problems: [CUT_OFF_PROBLEM] } : grade(answer.text);
       if (last.kind === "ok") return last;
       this.log(`model answer ${attempt} of 2 was unusable: ${last.problems.join("; ")}`);
       currentPrompt = retryPrompt(prompt, answer.text, last.problems);

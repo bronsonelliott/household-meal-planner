@@ -30,7 +30,7 @@ export function modelId(env: Record<string, string | undefined> = process.env): 
 }
 
 export const CALL_TIMEOUT_MS = 120_000; // wall-clock abort
-export const DEFAULT_MAX_TOKENS = 4096;
+export const DEFAULT_MAX_TOKENS = 8192; // room for a full week's draft or ingredient fill
 export const DEFAULT_API_KEY_ENV = "ANTHROPIC_API_KEY";
 
 export type BrainErrorClass = "rate-limit" | "auth" | "parse" | "other";
@@ -55,6 +55,7 @@ export interface MessageParams {
 }
 
 export interface MessageResponse {
+  stop_reason?: string | null; // "max_tokens" means the answer was cut off at the limit
   content: Array<{ type: string; text?: string }>;
 }
 
@@ -73,7 +74,7 @@ export const realClient: ClientFactory = (apiKey) =>
 export interface ClaudeCallerOptions {
   model?: string; // default: modelId()
   apiKeyEnv?: string; // the NAME of the variable holding the key; default ANTHROPIC_API_KEY
-  maxTokens?: number; // default 4096 (config: [model] maxOutputTokens)
+  maxTokens?: number; // default 8192 (config: [model] maxOutputTokens)
   timeoutMs?: number; // default: CALL_TIMEOUT_MS
   clientFactory?: ClientFactory; // default: the real SDK client
   env?: Record<string, string | undefined>; // where the key is read from; default process.env
@@ -87,6 +88,7 @@ export interface ModelCall {
 
 export interface ModelAnswer {
   text: string;
+  cutOff?: boolean; // true when the model ran out of output room, so `text` stops mid-answer
 }
 
 export type CallModel = (call: ModelCall) => Promise<ModelAnswer>;
@@ -122,7 +124,8 @@ export function createClaudeCaller(options: ClaudeCallerOptions = {}): CallModel
         },
         { signal: abortController.signal },
       );
-      return { text: answerText(response) };
+      const text = answerText(response);
+      return response.stop_reason === "max_tokens" ? { text, cutOff: true } : { text };
     } catch (error) {
       if (error instanceof BrainError) throw error;
       if (timedOut) throw new BrainError("other", `The model call timed out after ${Math.round(timeoutMs / 1000)} seconds.`);

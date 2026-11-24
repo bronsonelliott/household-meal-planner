@@ -31,6 +31,7 @@ import type { ScheduleConfig } from "../config.ts";
 import { NIGHTS, type IngredientLine, type Night } from "../data/profile.ts";
 import type { RecipeSnapshot } from "../recipes/types.ts";
 import { capitalize } from "./changeset.ts";
+import { isWaterOrIce, itemKey, mergeItem, nameContains } from "./grocery-merge.ts";
 
 // ---------------------------------------------------------------------------------------------
 // Types
@@ -462,47 +463,9 @@ export function renderDraft(week: WeekFile, options: { late: boolean; notes: str
 // The grocery list
 // ---------------------------------------------------------------------------------------------
 
-// The words of an ingredient's name (the part before the first comma), lowercased, with a
-// plain plural "s" dropped so "tortilla" and "tortillas" match.
-function nameWords(text: string): string[] {
-  const name = text.split(",")[0]!.toLowerCase();
-  return name
-    .split(/[^a-z0-9]+/)
-    .filter((word) => word.length > 0)
-    .map((word) => (word.length > 3 && word.endsWith("s") && !word.endsWith("ss") ? word.slice(0, -1) : word));
-}
-
-// True when all of `item`'s words appear, in order and side by side, in the ingredient's name:
-// "tortillas" matches "corn tortillas, 1 pack"; "olive oil" does not match "sesame oil".
-function nameContains(ingredient: string, item: string): boolean {
-  const haystack = nameWords(ingredient);
-  const needle = nameWords(item);
-  if (needle.length === 0) return false;
-  for (let start = 0; start + needle.length <= haystack.length; start++) {
-    if (needle.every((word, i) => haystack[start + i] === word)) return true;
-  }
-  return false;
-}
-
-function quantityOf(text: string): string {
-  const comma = text.indexOf(",");
-  return comma === -1 ? "" : text.slice(comma + 1).trim();
-}
-
-// One merged line: identical names within a section go on one line with their quantities side
-// by side ("chicken thighs, 2 lb + 1 lb"); without quantities it counts them ("white onion (x2)").
-function mergedText(texts: string[]): string {
-  if (texts.length === 1) return texts[0]!;
-  const name = texts[0]!.split(",")[0]!.trim();
-  const quantities = texts.map(quantityOf);
-  const given = quantities.filter((quantity) => quantity !== "");
-  if (given.length === 0) return `${name} (x${texts.length})`;
-  return `${name}, ${quantities.map((quantity) => (quantity === "" ? "as needed" : quantity)).join(" + ")}`;
-}
-
 // Builds the list from the week's nights: the household's grocery sections in their order, then
-// the staples under "check before you buy". Anything on the have-list is left off, and a dish
-// ingredient that is a staple goes only in the check block.
+// the staples under "check before you buy". Anything on the have-list is left off, water and ice
+// never appear, and a dish ingredient that is a staple goes only in the check block.
 export function buildGroceryList(week: WeekFile, staples: string[], sections: readonly string[]): GroceryLine[] {
   const isHad = (text: string) => week.have.some((item) => nameContains(text, item));
   const isStaple = (text: string) => staples.some((staple) => nameContains(text, staple));
@@ -513,8 +476,8 @@ export function buildGroceryList(week: WeekFile, staples: string[], sections: re
     const value = week.nights[night];
     if (!value || value.kind !== "dish") continue;
     for (const line of value.ingredients) {
-      if (isHad(line.text) || isStaple(line.text)) continue;
-      const key = nameWords(line.text).join(" ");
+      if (isWaterOrIce(line.text) || isHad(line.text) || isStaple(line.text)) continue;
+      const key = itemKey(line.text);
       if (!bySection.has(line.section)) bySection.set(line.section, new Map());
       const entries = bySection.get(line.section)!;
       if (!entries.has(key)) entries.set(key, []);
@@ -526,14 +489,14 @@ export function buildGroceryList(week: WeekFile, staples: string[], sections: re
   for (const section of sections) {
     const entries = bySection.get(section);
     if (!entries) continue;
-    for (const [key, texts] of entries) list.push({ section, key, text: mergedText(texts) });
+    for (const [key, texts] of entries) list.push({ section, key, text: mergeItem(texts) });
   }
 
   const hasAnyDish = NIGHTS.some((night) => week.nights[night]?.kind === "dish");
   if (hasAnyDish) {
     for (const staple of staples) {
       if (week.have.some((item) => nameContains(staple, item))) continue;
-      list.push({ section: CHECK_SECTION, key: nameWords(staple).join(" "), text: staple });
+      list.push({ section: CHECK_SECTION, key: itemKey(staple), text: staple });
     }
   }
   return list;

@@ -34,6 +34,7 @@ import {
   NOTHING_TO_SAVE,
   NO_SETUP_RUNNING,
   PROFILE_UNREADABLE,
+  REASK_PREFIX,
   REPHRASE_REQUEST,
   SAMPLE_INTRO,
   SETUP_ALREADY_RUNNING,
@@ -55,12 +56,14 @@ import {
   isActivePhase,
   loadOnboardingState,
   markConflictAsked,
+  needsStartupReask,
   newOnboardingState,
   nextStateSeq,
   nextStep,
   nextTopic,
   onboardingStatePath,
   proposalFromProfile,
+  recordAsk,
   recordDelivery,
   recordReadBack,
   recordReadBackDelivered,
@@ -71,6 +74,7 @@ import {
   saveIfNewer,
   snapshotApproval,
   startAsking,
+  unconfirmedQuestion,
   withPhase,
   type BatchMessage,
   type DeliveryStatus,
@@ -192,6 +196,13 @@ export class Interview {
     return state.phase === "awaiting-start";
   }
 
+  // True when the interview is waiting on a question whose send was never confirmed, and it has
+  // not been repeated yet.
+  questionNeedsReask(): boolean {
+    const loaded = this.load();
+    return loaded.kind === "ok" && needsStartupReask(loaded.state);
+  }
+
   // A first-run interview left open when a profile has appeared by hand is closed, not resumed
   // (unless the save was already under way: that turn finishes it).
   closeIfProfileAppeared(): void {
@@ -221,6 +232,8 @@ export class Interview {
     switch (input.kind) {
       case "startup":
         return this.startup(run);
+      case "reask":
+        return this.reask(run);
       case "answers":
         return this.answers(run, input);
       case "command":
@@ -295,8 +308,9 @@ export class Interview {
       return this.setState(run, "clarification-asked", markConflictAsked(state, step.conflict.id, this.now));
     }
     if (step.kind === "ask") {
-      await this.say(run, "question", questionFor(step.topic));
-      return this.setState(run, "question-asked", { ...withPhase(state, "asking", this.now), currentTopic: step.topic, pendingSnapshot: null });
+      const outcome = await this.say(run, "question", questionFor(step.topic));
+      const asking: OnboardingState = { ...withPhase(state, "asking", this.now), currentTopic: step.topic, pendingSnapshot: null };
+      return this.setState(run, "question-asked", recordAsk(asking, step.topic, wasDelivered(outcome), false, this.now));
     }
     return this.readBack(run, state);
   }
@@ -330,8 +344,28 @@ export class Interview {
 
   private async welcome(run: Run, state: OnboardingState): Promise<OnboardingState> {
     const text = welcomeMessage({ botName: this.deps.settings.botName, memberNames: this.deps.settings.members.map((member) => member.name), mode: state.mode });
-    await this.say(run, "welcome", text);
-    return this.setState(run, "question-asked", startAsking(state, this.now));
+    const outcome = await this.say(run, "welcome", text);
+    const asking = startAsking(state, this.now);
+    // The welcome carries the first question, so if it was not confirmed that question is unseen.
+    const noted = asking.currentTopic ? recordAsk(asking, asking.currentTopic, wasDelivered(outcome), false, this.now) : asking;
+    return this.setState(run, "question-asked", noted);
+  }
+
+  // Asks the question being waited on once more, with a short lead-in, and notes how that went.
+  private async askAgain(run: Run, state: OnboardingState): Promise<OnboardingState> {
+    const topic = state.currentTopic!;
+    const outcome = await this.say(run, "question", `${REASK_PREFIX}\n\n${questionFor(topic)}`);
+    return this.setState(run, "question-reasked", recordAsk(state, topic, wasDelivered(outcome), true, this.now));
+  }
+
+  // At start-up: the question being waited on never reached the household (its send ended
+  // unknown, failed or queued), so it is asked once more. Asking a question twice is harmless,
+  // unlike posting a meal plan twice.
+  private async reask(run: Run): Promise<void> {
+    const began = await this.look(run);
+    const state = began.state;
+    if (!state || !needsStartupReask(state)) return;
+    await this.askAgain(run, state);
   }
 
   private freshState(began: Began): OnboardingState {
@@ -436,7 +470,13 @@ export class Interview {
       await this.followUp(run, next);
       return;
     }
-    // Nothing new in these messages. Chatter between the adults gets no reply; a message to the bot does.
+    // Nothing new in these messages. If the question they are waiting on may never have arrived,
+    // that is why they are not answering it: ask it again, whoever the message was for.
+    if (unconfirmedQuestion(next) !== null) {
+      await this.askAgain(run, next);
+      return;
+    }
+    // Otherwise chatter between the adults gets no reply; a message to the bot does.
     if (!input.addressed) return;
     if (next.phase === "proposed" || next.phase === "confirming-snapshot") {
       await this.say(run, "notice", 'Say "save it" to save these rules, or tell me what to change.');
@@ -598,4 +638,10 @@ function combine(statuses: DeliveryStatus[]): DeliveryStatus {
   if (statuses.includes("queued")) return "queued";
   if (statuses.some((status) => status === "delivered" || status === "partial")) return "partial";
   return "failed";
+}
+
+// A send is confirmed when it was posted (even to only some members). Unknown, failed and queued
+// sends may never have been seen.
+function wasDelivered(outcome: SendOutcome): boolean {
+  return outcome.kind === "sent" || outcome.kind === "partial";
 }

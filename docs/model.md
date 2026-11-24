@@ -55,7 +55,7 @@ id = "claude-sonnet-5-5"
 ```
 
 The other settings in that section: `timeoutMs` (how long to wait for one answer, default 2
-minutes) and `maxOutputTokens` (the longest answer, default 4096).
+minutes) and `maxOutputTokens` (the longest answer, default 8192).
 
 ## Trying the key for real
 

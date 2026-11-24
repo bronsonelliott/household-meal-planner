@@ -53,6 +53,8 @@ export class FakeTelegramApi {
   botStatusInGroup = "member";
   // Longest the fake holds a getUpdates call open when nothing is waiting.
   holdCapMs = 80;
+  // Extra delay before an idle getUpdates answers, like a slow network on top of the long poll.
+  idleAnswerLateMs = 0;
 
   requests: Recorded[] = [];
   private updates: any[] = [];
@@ -180,6 +182,7 @@ export class FakeTelegramApi {
         });
       });
     }
+    if (this.updates.length === 0 && this.idleAnswerLateMs > 0) await Bun.sleep(this.idleAnswerLateMs);
     return this.json({ ok: true, result: this.updates.slice(0, Number(params.limit ?? 100)) });
   }
 

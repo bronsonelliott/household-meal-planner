@@ -8,6 +8,8 @@ import { join } from "node:path";
 import { parseProfile } from "../src/data/profile.ts";
 import { EXTERNAL_EDIT_MESSAGE, FIRST_RUN_PROFILE_APPEARED, TOPIC_QUESTIONS } from "../src/onboarding/questions.ts";
 import { OUTAGE_LINE } from "../src/ops/scheduler.ts";
+import { FAKE_CONVERSATION_ID, FakeAdapter } from "../src/messaging/fake.ts";
+import { REASK_PREFIX } from "../src/onboarding/questions.ts";
 import { InterviewHarness } from "./fixtures/interview-harness.ts";
 import { alexNightsAndHabits, dinners, everythingInOneAnswer, reachProposal, reading, start } from "./fixtures/interview-scenarios.ts";
 import { add } from "./fixtures/onboarding-fixtures.ts";
@@ -297,5 +299,55 @@ describe("a damaged state file, and a profile that appears by hand", () => {
     await h.say("Sam", "what's on Tuesday?");
     expect(h.brain.handled).toHaveLength(1);
     expect(h.lastText).toBe("Tuesday is tacos.");
+  });
+});
+
+describe("a question that may never have arrived", () => {
+  // The first start's welcome ends Unknown (as after a crash while sending), so nobody saw it.
+  function welcomeLost(): InterviewHarness {
+    let first = true;
+    const h = new InterviewHarness({
+      makeAdapter: () => {
+        const adapter = new FakeAdapter({ conversationId: FAKE_CONVERSATION_ID });
+        if (first) adapter.scriptSends([{ kind: "unknown", detail: "the connection dropped mid-send" }]);
+        first = false;
+        return adapter;
+      },
+    });
+    harnesses.push(h);
+    return h;
+  }
+
+  test("at start-up the current question is asked again, once, and a further restart does not repeat it", async () => {
+    const h = welcomeLost();
+    await h.boot();
+    expect(h.texts).toHaveLength(1); // the welcome, whose send was never confirmed
+    expect(h.state?.phase).toBe("asking");
+
+    await h.restart();
+    expect(h.texts).toHaveLength(2);
+    expect(h.lastText).toBe(`${REASK_PREFIX}\n\n${TOPIC_QUESTIONS.nights}`);
+
+    await h.restart();
+    await h.restart();
+    expect(h.texts).toHaveLength(2); // journaled: restarts do not loop
+    h.reads(alexNightsAndHabits());
+    await h.say("Alex", "Friday is eating out. Weeknight dinners need to be quick. Chicken at least once a week.");
+    expect(h.lastText).toBe(TOPIC_QUESTIONS.dinners);
+  });
+
+  test("a confirmed welcome is never asked again after a restart", async () => {
+    const h = await household();
+    await h.restart();
+    expect(h.texts).toHaveLength(1);
+  });
+
+  test("an adult writing something that is no answer gets the question again, even if it was not addressed to the bot", async () => {
+    const h = welcomeLost();
+    await h.boot();
+    // This turn's own send is also lost, so the restart's repeat is the only thing that could help: skip it.
+    h.reads(reading(() => ({})));
+    await h.say("Sam", "hello?");
+    expect(h.lastText).toBe(`${REASK_PREFIX}\n\n${TOPIC_QUESTIONS.nights}`);
   });
 });

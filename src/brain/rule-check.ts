@@ -14,6 +14,7 @@
 //
 // Dislikes are information, never bans: nothing here reads them.
 
+import { capGroupOf, groupsOfProtein } from "../recipes/protein.ts";
 import { findUsableRecord, proteinOf, usableRecords } from "../recipes/catalog.ts";
 import { findSourceById } from "../recipes/sources.ts";
 import { UNKNOWN_PROTEIN, type RecipeContext } from "../recipes/types.ts";
@@ -301,10 +302,10 @@ function targetNights(target: NightTarget, weeknights: readonly Night[]): readon
   return target === "weeknights" ? weeknights : [target];
 }
 
-// A night's tags for rule purposes: its own tags plus its protein, so "no fish on weeknights"
-// catches a salmon dish whose tags don't say "fish".
+// A night's tags for rule purposes: its own tags, its protein, and the groups that protein belongs
+// to (beef -> red-meat), so "no fish on weeknights" catches a salmon dish whose tags don't say "fish".
 function tagsOf(night: CheckNight): string[] {
-  return night.protein ? [...night.tags, night.protein] : night.tags;
+  return night.protein ? [...night.tags, night.protein, ...groupsOfProtein(night.protein)] : night.tags;
 }
 
 // Compares rule text without case, extra spaces, or trailing punctuation.
@@ -423,8 +424,9 @@ export function checkWeek(input: CheckInput): CheckResult {
 
   const byProtein = new Map<string, Night[]>();
   for (const night of dishNights) {
-    const protein = nights[night]!.protein;
-    if (!protein || protein === UNKNOWN_PROTEIN) continue;
+    const stated = nights[night]!.protein;
+    if (!stated || stated === UNKNOWN_PROTEIN) continue;
+    const protein = capGroupOf(stated); // salmon, tuna and cod are one protein for the cap
     if (!byProtein.has(protein)) byProtein.set(protein, []);
     byProtein.get(protein)!.push(night);
   }

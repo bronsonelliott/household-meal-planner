@@ -214,7 +214,8 @@ describe("typed profile rules", () => {
     });
     const result = checkWeek({ weekOf: WEEK_OF, nights: week, profile, recentLog: [], weeknights: MON_TO_THU });
     expect(result.violations.map((v) => v.text)).toEqual([
-      '2 nights tagged "red-meat" (Tuesday, Sunday); "Red meat no more than once a week." allows 1',
+      // Wednesday's untagged pork chops count too: pork is red meat.
+      '3 nights tagged "red-meat" (Tuesday, Wednesday, Sunday); "Red meat no more than once a week." allows 1',
     ]);
   });
 

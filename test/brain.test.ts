@@ -67,13 +67,18 @@ describe("the request", () => {
     const call = fake.calls[0]!;
     expect(call.params).toEqual({
       model: "claude-sonnet-5-5",
-      max_tokens: 4096,
+      max_tokens: 8192,
       system: "SYSTEM PROMPT TEXT",
       messages: [{ role: "user", content: "USER PROMPT TEXT" }],
     });
     expect("tools" in call.params).toBe(false);
     expect(call.apiKey).toBe(KEY);
     expect(call.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  test("an answer that stopped at max_tokens is flagged as cut off", async () => {
+    fake.push({ response: { content: [{ type: "text", text: '{"fills": [' }], stop_reason: "max_tokens" } });
+    expect(await createClaudeCaller(options)(CALL)).toEqual({ text: '{"fills": [', cutOff: true });
   });
 
   test("model and max_tokens come from the options, and a call can ask for a smaller limit", async () => {
@@ -729,6 +734,21 @@ describe("ingredient lines at lock", () => {
     await makeBrain().fillIngredients([{ weekOf: "2026-10-05", night: "tuesday", dish: "Chicken tinga", pool: "source", publisherLines: null }]);
     expect(fake.calls[0]!.prompt).toContain("Chicken tinga (source dish with no lines yet; propose them)");
     expect(fake.calls[0]!.prompt).not.toContain("publisher's recipe");
+  });
+
+  test("an answer cut off at the output limit is named as cut off, retried, and the fill asks for extra room", async () => {
+    const cut = { content: [{ type: "text", text: fillsJson("Pasta & Rice").slice(0, 40) }], stop_reason: "max_tokens" };
+    fake.push({ response: cut }, answer(fillsJson("Pasta & Rice")));
+    const brain = makeBrain();
+    expect(await brain.fillIngredients(requests)).toHaveLength(2);
+    expect(fake.calls[0]!.params.max_tokens).toBeGreaterThanOrEqual(12_000);
+    expect(fake.calls[1]!.prompt).toContain("cut off");
+    expect(fake.calls[1]!.prompt).not.toContain("not valid JSON");
+
+    fake.push({ response: cut }, { response: cut });
+    const failure = await brainFailure(brain.fillIngredients(requests));
+    expect(failure.errorClass).toBe("parse");
+    expect(failure.message).toContain("cut off");
   });
 
   test("no requests means no call", async () => {

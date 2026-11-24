@@ -516,6 +516,17 @@ describe("start-up checks, privacy mode and health", () => {
     expect((await run.messenger.checkHealth()).healthy).toBe(true);
   });
 
+  test("an idle long poll that answers a little late is not a problem (the request timeout allows for the poll)", async () => {
+    // The general request timeout is tiny here; the poll's own limit must still be poll time + slack.
+    api.holdCapMs = 100;
+    api.idleAnswerLateMs = 700;
+    const adapter = telegramAdapter(api, stateDir, { pollTimeoutSec: 1, requestTimeoutMs: 100 });
+    const run = await boot({ adapter });
+    await eventually(() => api.calls("getUpdates").length >= 2, 4000);
+    expect(run.logs.some((line) => line.includes("polling problem"))).toBe(false);
+    expect((await run.messenger.checkHealth()).healthy).toBe(true);
+  });
+
   test("polling carries on through errors and picks the message up afterwards", async () => {
     const run = await boot();
     api.override("getUpdates", { error: 502, description: "Bad Gateway" });

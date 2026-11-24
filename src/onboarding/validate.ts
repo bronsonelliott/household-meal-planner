@@ -11,6 +11,7 @@
 // the adults approve it as an advisory.
 
 import { NIGHTS, ProfileError, parseProfile, type Night, type NightTarget, type Rule } from "../data/profile.ts";
+import { capGroupOf, dishCountsFor } from "../recipes/protein.ts";
 import { renderProfile } from "./render.ts";
 import type { Proposal } from "./state.ts";
 
@@ -24,7 +25,8 @@ export interface Validation {
   flags: string[];
 }
 
-// A dish as far as these checks care: its protein counts as one of its tags.
+// A dish as far as these checks care: its protein, and the groups that protein belongs to
+// (beef -> red-meat), count as tags too.
 export interface TaggedDish {
   name: string;
   protein: string;
@@ -32,8 +34,7 @@ export interface TaggedDish {
 }
 
 export function dishCarries(dish: TaggedDish, tag: string): boolean {
-  const wanted = tag.toLowerCase();
-  return dish.protein.toLowerCase() === wanted || dish.tags.some((t) => t.toLowerCase() === wanted);
+  return dishCountsFor(dish.protein, dish.tags, tag);
 }
 
 // The tag a rule needs some dish to carry, if it is a "positive" rule: one that can only be met
@@ -67,7 +68,7 @@ export function tagCoverage(rules: readonly Rule[], dishes: readonly TaggedDish[
 export function tagCoverageWarnings(rules: readonly Rule[], dishes: readonly TaggedDish[]): string[] {
   return tagCoverage(rules, dishes)
     .filter((entry) => entry.dishes.length === 0)
-    .map((entry) => `The rule "${entry.rule.prose}" needs a dish tagged "${entry.tag}", and none of your dishes has that tag (a dish's protein counts as a tag). The bot will have to invent dishes for it. Add "${entry.tag}" to the Tags: line of a dish that fits.`);
+    .map((entry) => `The rule "${entry.rule.prose}" needs a dish tagged "${entry.tag}", and none of your dishes has that tag (a dish's protein, and the group it belongs to such as red-meat or seafood, count as tags). The bot will have to invent dishes for it. Add "${entry.tag}" to the Tags: line of a dish that fits.`);
 }
 
 function nightsOf(target: NightTarget, weeknights: readonly Night[]): Night[] {
@@ -152,8 +153,10 @@ export function validateProposal(proposal: Proposal, settings: ValidationSetting
     if (rule.check.kind !== "min") continue;
     const { tag, count } = rule.check;
     const carrying = proposal.dishes.filter((dish) => dishCarries(dish, tag));
-    const isProtein = carrying.some((dish) => dish.protein.toLowerCase() === tag.toLowerCase());
-    const onlyThatProtein = carrying.every((dish) => dish.protein.toLowerCase() === tag.toLowerCase());
+    // "fish" is one protein for the cap, however many fish species the dishes use.
+    const isThatProtein = (dish: TaggedDish) => dish.protein.toLowerCase() === tag.toLowerCase() || capGroupOf(dish.protein) === tag.toLowerCase();
+    const isProtein = carrying.some(isThatProtein);
+    const onlyThatProtein = carrying.every(isThatProtein);
     if (isProtein && onlyThatProtein && count > cap_) {
       problems.push(`${quote(rule)} wants ${tag} on at least ${count} nights, but the limit is ${cap_} nights for any one protein.`);
     }
@@ -162,24 +165,24 @@ export function validateProposal(proposal: Proposal, settings: ValidationSetting
   // 7b. Nights that fixed and require rules already force onto one protein, against the same limit.
   // "fixed friday chicken" and "require chicken weeknights" both fill nights with chicken; a min
   // rule only adds nights beyond those. (Rule 7 above covers a min rule on its own.)
-  const proteins = new Set(proposal.dishes.map((dish) => dish.protein.toLowerCase()).filter((protein) => protein !== ""));
+  const proteins = new Set(proposal.dishes.map((dish) => capGroupOf(dish.protein)).filter((protein) => protein !== ""));
   for (const protein of proteins) {
     const forced = new Set<Night>();
     const sources: Rule[] = [];
     for (const entry of fixed) {
-      if (entry.value.toLowerCase() === protein) {
+      if (capGroupOf(entry.value) === protein) {
         forced.add(entry.night);
         sources.push(entry.rule);
       }
     }
     for (const need of requires) {
-      if (need.tag.toLowerCase() === protein) {
+      if (capGroupOf(need.tag) === protein) {
         for (const night of need.nights) forced.add(night);
         sources.push(need.rule);
       }
     }
     if (forced.size === 0) continue;
-    const mins = rules.flatMap((rule) => (rule.check.kind === "min" && rule.check.tag.toLowerCase() === protein ? [rule.check.count] : []));
+    const mins = rules.flatMap((rule) => (rule.check.kind === "min" && capGroupOf(rule.check.tag) === protein ? [rule.check.count] : []));
     const total = Math.max(forced.size, ...mins);
     if (total > cap_) {
       const named = sources.map(quote).join(" and ");

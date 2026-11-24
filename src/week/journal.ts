@@ -48,6 +48,8 @@ export type Step =
 export type InterviewInput =
   // The bridge started with no profile (or a redo began): welcome the adults and ask the first question.
   | { kind: "startup" }
+  // At start-up, the question being waited on may never have been seen: ask it once more.
+  | { kind: "reask" }
   // Answers from the adults, with the model's reading of them (null when only "skip" was said).
   | { kind: "answers"; messages: BatchMessage[]; addressed: boolean; extraction: OnboardingExtractOutcome | null }
   | { kind: "command"; command: "setup" | "cancel" | "sample"; by: string; byName: string; messageId: string }

@@ -434,6 +434,14 @@ export class Worker {
       if (!interview) return;
       await this.resumeInterviewTurns();
       interview.closeIfProfileAppeared();
+      // A question whose send was never confirmed (say, a crash while sending the welcome) is asked
+      // once more. Journaled like any turn, so a restart does not do it again.
+      if (interview.questionNeedsReask()) {
+        const dryRun = this.options.interview!.dryRun ? "dry-" : "";
+        const reaskId = `iv-reask-${dryRun}${this.options.now()}`;
+        this.appendInterviewTurn(reaskId, [], { kind: "reask" });
+        await this.finishInterviewTurn(this.journal.get(reaskId)!);
+      }
       if (!interview.startupNeeded()) return;
       const dry = this.options.interview!.dryRun ? "dry-" : "";
       const id = `iv-start-${dry}${this.options.now()}`;
