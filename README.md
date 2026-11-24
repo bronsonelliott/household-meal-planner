@@ -464,6 +464,26 @@ cannot understand. The example in `data.example/profile.md` is the best starting
 - **Secrets** live in your `.env` file, never in `config.toml`. The bot is designed never to write
   them to its logs or send them to the model (covered by the test suite).
 
+### Why not my Claude subscription?
+
+If you pay for Claude Pro or Max, it's natural to ask why the bot needs a separate API key. Two
+reasons:
+
+- **Anthropic doesn't allow it.** Apps like this one are not permitted to sign in with a Claude.ai
+  subscription. Anthropic asks developers to use API keys from the
+  [Claude Console](https://console.anthropic.com) and not to collect or pass along subscription
+  logins. See the note in the
+  [Agent SDK overview](https://code.claude.com/docs/en/agent-sdk/overview) and the
+  [legal and compliance page](https://code.claude.com/docs/en/legal-and-compliance).
+- **They're billed separately.** A Pro or Max plan covers Claude in Anthropic's own apps. API use is
+  a separate account, paid by usage at API rates
+  ([Anthropic support](https://support.claude.com/en/articles/11145838-using-claude-code-with-your-pro-or-max-plan)).
+
+So you'll make a Console account, add a little credit, and create a key; [docs/model.md](docs/model.md)
+walks through it. The bot calls the model for the weekly draft and when someone writes to it, so
+use grows with how chatty your household is; the Console shows exactly what you've spent. (Checked against Anthropic's docs on 2026-11-24; their policies can
+change.)
+
 ## Recipe sources and the terms caveat
 
 Each source has a mode: **link** (the bot only builds a search link; it does not open the site),
