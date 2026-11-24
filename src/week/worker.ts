@@ -233,6 +233,7 @@ export class Worker {
   private log: (line: string) => void;
   private interview: Interview | null = null;
   private lastNudgeAt = -Infinity;
+  private leftOverQuestionMayBeLost = false;
 
   constructor(private options: WorkerOptions) {
     this.timers = options.timers ?? DEFAULT_TIMERS;
@@ -436,26 +437,43 @@ export class Worker {
   }
 
   // At start-up: begin the first-run interview if there is no profile (the welcome is posted once;
-  // a restart does not post it again). Call after recover(), in the same queue.
+  // a restart does not post it again). Call after recover(), in the same queue. A question that
+  // may never have arrived is repeated separately, by reaskUnansweredQuestion().
   startOnboarding(): Promise<void> {
     return this.run(async () => {
       const interview = this.interview;
       if (!interview) return;
       await this.resumeInterviewTurns();
       interview.closeIfProfileAppeared();
-      // A question whose send was never confirmed (say, a crash while sending the welcome) is asked
-      // once more. Journaled like any turn, so a restart does not do it again.
-      if (interview.questionNeedsReask()) {
-        const dryRun = this.options.interview!.dryRun ? "dry-" : "";
-        const reaskId = `iv-reask-${dryRun}${this.options.now()}`;
-        this.appendInterviewTurn(reaskId, [], { kind: "reask" });
-        await this.finishInterviewTurn(this.journal.get(reaskId)!);
-      }
+      // Noted now, before this start-up posts anything: only a question left over from an earlier
+      // run can have gone missing, not one this run is about to send.
+      this.leftOverQuestionMayBeLost = interview.questionNeedsReask();
       if (!interview.startupNeeded()) return;
       const dry = this.options.interview!.dryRun ? "dry-" : "";
       const id = `iv-start-${dry}${this.options.now()}`;
       this.appendInterviewTurn(id, [], { kind: "startup" });
       await this.finishInterviewTurn(this.journal.get(id)!);
+    });
+  }
+
+  // At start-up, after the messenger has handed over the messages that were never answered: a
+  // question whose send was never confirmed (say, a crash while sending the welcome) is asked once
+  // more. Journaled like any turn, so a restart does not do it again.
+  // If someone's answer is already waiting, the question clearly reached them: skip the repeat and
+  // let the normal flow deal with what they said (it repeats the question itself if the answer
+  // turns out to be nothing).
+  reaskUnansweredQuestion(): Promise<void> {
+    return this.run(async () => {
+      const interview = this.interview;
+      if (!interview) return;
+      if (!this.leftOverQuestionMayBeLost) return;
+      this.leftOverQuestionMayBeLost = false;
+      if (this.pending.length > 0) return;
+      if (!interview.questionNeedsReask()) return;
+      const dryRun = this.options.interview!.dryRun ? "dry-" : "";
+      const reaskId = `iv-reask-${dryRun}${this.options.now()}`;
+      this.appendInterviewTurn(reaskId, [], { kind: "reask" });
+      await this.finishInterviewTurn(this.journal.get(reaskId)!);
     });
   }
 

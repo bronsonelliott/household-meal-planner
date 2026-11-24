@@ -210,6 +210,7 @@ export class InterviewHarness {
       healthIntervalMs: 60 * 60 * 1000,
     });
     this.messenger = messenger;
+    void this.worker.reaskUnansweredQuestion();
     if (options.settle !== false) await this.settle();
   }
 

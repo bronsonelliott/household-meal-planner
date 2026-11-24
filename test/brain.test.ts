@@ -774,6 +774,23 @@ describe("ingredient lines at lock", () => {
     expect(failure.message).toContain("cut off");
   });
 
+  test("the fill uses the configured maxOutputTokens when it is higher than 16000, and the cut-off message names that setting", async () => {
+    fake.push(answer(fillsJson("Pasta & Rice")));
+    const big = new ClaudeBrain({ callModel: createClaudeCaller(options), settings: BRAIN_SETTINGS, maxOutputTokens: 24_000 });
+    await big.fillIngredients(requests);
+    expect(fake.calls[0]!.params.max_tokens).toBe(24_000);
+
+    fake.push(answer(fillsJson("Pasta & Rice")));
+    const small = new ClaudeBrain({ callModel: createClaudeCaller(options), settings: BRAIN_SETTINGS, maxOutputTokens: 8192 });
+    await small.fillIngredients(requests);
+    expect(fake.calls[1]!.params.max_tokens).toBe(16_000);
+
+    const cut = { content: [{ type: "text", text: "{" }], stop_reason: "max_tokens" };
+    fake.push({ response: cut }, { response: cut });
+    const failure = await brainFailure(small.fillIngredients(requests));
+    expect(failure.message).toContain("raise maxOutputTokens above 16000");
+  });
+
   test("no requests means no call", async () => {
     expect(await makeBrain().fillIngredients([])).toEqual([]);
     expect(fake.calls).toHaveLength(0);

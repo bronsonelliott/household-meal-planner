@@ -342,6 +342,33 @@ describe("a question that may never have arrived", () => {
     expect(h.texts).toHaveLength(1);
   });
 
+  test("a question the chat app is holding for later is not asked again at start-up", async () => {
+    let first = true;
+    const h = new InterviewHarness({
+      makeAdapter: () => {
+        const adapter = new FakeAdapter({ conversationId: FAKE_CONVERSATION_ID });
+        if (first) adapter.scriptSends([{ kind: "failed", detail: "outside the reply window", queued: true }]);
+        first = false;
+        return adapter;
+      },
+    });
+    harnesses.push(h);
+    await h.boot();
+    expect(h.texts).toHaveLength(1);
+    await h.restart();
+    await h.restart();
+    expect(h.texts).toHaveLength(1); // it will arrive on its own; no second copy
+  });
+
+  test("a restart does not repeat a question that someone has already answered", async () => {
+    const h = welcomeLost();
+    await h.boot();
+    // The answer is received but still waiting for the quiet window when the process stops.
+    await h.type("Alex", "Friday is eating out.");
+    await h.restart();
+    expect(h.texts).toHaveLength(1); // no "in case you missed it" repeat on top of their answer
+  });
+
   test("an adult writing something that is no answer gets the question again, even if it was not addressed to the bot", async () => {
     const h = welcomeLost();
     await h.boot();

@@ -128,7 +128,7 @@ See [model.md](model.md).
 | `id` | The model to use. Default `"claude-sonnet-5-5"`. |
 | `apiKeyEnv` | The **name** of the variable holding your Anthropic API key. Default `"ANTHROPIC_API_KEY"`. |
 | `timeoutMs` | How long to wait for one answer, in milliseconds. Default 120000 (2 minutes). |
-| `maxOutputTokens` | The longest answer the model may write. Default 4096. |
+| `maxOutputTokens` | The longest answer the model may write. Default 8192. Writing a week's ingredient lines needs more room, so that one call uses 16000 tokens, or this setting when it is higher. If ingredient lines keep getting "cut off", raise this above 16000. |
 
 ## [recipes]
 

@@ -3,7 +3,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { checkWeek } from "../src/brain/rule-check.ts";
-import { capGroupOf, dishCountsFor, groupsOfProtein } from "../src/recipes/protein.ts";
+import { capGroupOf, dishCountsFor, groupsOfProtein, guessProtein } from "../src/recipes/protein.ts";
 import { dishCarries, tagCoverageWarnings } from "../src/onboarding/validate.ts";
 import { MON_TO_THU } from "./fixtures/config-fixtures.ts";
 import { baselineWeek, dish, testProfile, withNights } from "./fixtures/brain-fixtures.ts";
@@ -70,5 +70,24 @@ describe("onboarding and the doctor", () => {
   test("the doctor still warns when no dish is in the group", () => {
     const warnings = tagCoverageWarnings([{ prose: "Seafood once. [min seafood 1]", check: { kind: "min", tag: "seafood", count: 1 } } as any], [{ name: "Chicken tacos", protein: "chicken", tags: [] }]);
     expect(warnings).toHaveLength(1);
+  });
+});
+
+describe("review fixes: one seafood table", () => {
+  test("squid, calamari and octopus are shellfish, singular or plural", () => {
+    for (const word of ["squid", "calamari", "octopus", "clam", "clams", "mussel", "scallop", "oyster", "oysters"]) {
+      expect(groupsOfProtein(word)).toEqual(["shellfish", "seafood"]);
+      expect(capGroupOf(word)).toBe("shellfish");
+    }
+    expect(capGroupOf("sardine")).toBe("fish");
+    expect(capGroupOf("anchovies")).toBe("fish");
+  });
+
+  test("the protein guesser reads the same table", () => {
+    expect(guessProtein("Calamari fritti", [])).toBe("shellfish");
+    expect(guessProtein("Linguine", ["1 lb clam, scrubbed"])).toBe("shellfish");
+    expect(guessProtein("Pasta", ["1 octopus"])).toBe("shellfish");
+    expect(guessProtein("Roasted sardine toast", [])).toBe("fish");
+    expect(dishCountsFor("clams", [], "clam")).toBe(true);
   });
 });

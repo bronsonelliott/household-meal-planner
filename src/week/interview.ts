@@ -310,7 +310,7 @@ export class Interview {
     if (step.kind === "ask") {
       const outcome = await this.say(run, "question", questionFor(step.topic, this.deps.settings.members.length));
       const asking: OnboardingState = { ...withPhase(state, "asking", this.now), currentTopic: step.topic, pendingSnapshot: null };
-      return this.setState(run, "question-asked", recordAsk(asking, step.topic, wasDelivered(outcome), false, this.now));
+      return this.setState(run, "question-asked", recordAsk(asking, step.topic, wasDelivered(outcome), false, this.now, wasQueued(outcome)));
     }
     return this.readBack(run, state);
   }
@@ -347,7 +347,7 @@ export class Interview {
     const outcome = await this.say(run, "welcome", text);
     const asking = startAsking(state, this.now);
     // The welcome carries the first question, so if it was not confirmed that question is unseen.
-    const noted = asking.currentTopic ? recordAsk(asking, asking.currentTopic, wasDelivered(outcome), false, this.now) : asking;
+    const noted = asking.currentTopic ? recordAsk(asking, asking.currentTopic, wasDelivered(outcome), false, this.now, wasQueued(outcome)) : asking;
     return this.setState(run, "question-asked", noted);
   }
 
@@ -355,7 +355,7 @@ export class Interview {
   private async askAgain(run: Run, state: OnboardingState): Promise<OnboardingState> {
     const topic = state.currentTopic!;
     const outcome = await this.say(run, "question", `${REASK_PREFIX}\n\n${questionFor(topic, this.deps.settings.members.length)}`);
-    return this.setState(run, "question-reasked", recordAsk(state, topic, wasDelivered(outcome), true, this.now));
+    return this.setState(run, "question-reasked", recordAsk(state, topic, wasDelivered(outcome), true, this.now, wasQueued(outcome)));
   }
 
   // At start-up: the question being waited on never reached the household (its send ended
@@ -644,4 +644,11 @@ function combine(statuses: DeliveryStatus[]): DeliveryStatus {
 // sends may never have been seen.
 function wasDelivered(outcome: SendOutcome): boolean {
   return outcome.kind === "sent" || outcome.kind === "partial";
+}
+
+// True when the chat app is holding the message to deliver later. The adapter reports no
+// "delivered now" event when the queue drains, so a queued question stays "on its way" and is
+// never asked again.
+function wasQueued(outcome: SendOutcome): boolean {
+  return !wasDelivered(outcome) && outcome.queued === true;
 }

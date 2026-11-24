@@ -55,7 +55,8 @@ id = "claude-sonnet-5-5"
 ```
 
 The other settings in that section: `timeoutMs` (how long to wait for one answer, default 2
-minutes) and `maxOutputTokens` (the longest answer, default 8192).
+minutes) and `maxOutputTokens` (the longest answer, default 8192; the
+ingredient-lines call uses 16000 or this number, whichever is higher).
 
 ## Trying the key for real
 

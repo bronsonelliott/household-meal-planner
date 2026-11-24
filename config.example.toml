@@ -193,7 +193,9 @@ id = "claude-sonnet-5-5"
 apiKeyEnv = "ANTHROPIC_API_KEY"
 # How long to wait for one answer before giving up, in milliseconds (120000 = 2 minutes).
 timeoutMs = 120000
-# The longest answer the model may write, in tokens.
+# The longest answer the model may write, in tokens. Writing a week's ingredient lines is the
+# longest job, so that one call uses 16000 tokens or this number, whichever is higher. If you see
+# "cut off" for ingredient lines, set this above 16000.
 maxOutputTokens = 8192
 
 

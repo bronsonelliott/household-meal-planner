@@ -190,6 +190,9 @@ const messenger = await startMessengerOrExit(adapter, {
 });
 liveMessenger = messenger;
 resolveMessenger(messenger);
+// Only now are the messages left unanswered by the last run back in the worker, so it can tell
+// whether a repeat of the current question is needed.
+void worker.reaskUnansweredQuestion();
 log(`bridge running${app.dryRun ? " (DRY RUN: nothing is sent)" : ""}; data folder ${dataDir}`);
 
 // Mealie and Tandoor become sources the first time config.toml names them.

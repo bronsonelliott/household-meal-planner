@@ -6,6 +6,38 @@
 
 import { UNKNOWN_PROTEIN } from "./types.ts";
 
+// ----- The one list of seafood species -----
+// Guessing a recipe's protein, the protein groups ("seafood") and the per-protein cap all read
+// these two lists, so a species added here is understood everywhere. Singular names only: the
+// plural spellings are made from them.
+
+const FISH_SPECIES = [
+  "salmon", "tuna", "cod", "tilapia", "halibut", "trout", "haddock", "mackerel", "sardine", "anchovy",
+  "snapper", "bass", "monkfish", "catfish", "mahi-mahi", "swordfish",
+];
+const SHELLFISH_SPECIES = ["shrimp", "prawn", "crab", "lobster", "scallop", "mussel", "clam", "oyster", "squid", "calamari", "octopus"];
+
+// "clam" -> ["clam", "clams"], "anchovy" -> ["anchovy", "anchovies"], "bass" -> ["bass", "basses"].
+function withPlural(word: string): string[] {
+  if (word.endsWith("y")) return [word, `${word.slice(0, -1)}ies`];
+  if (word.endsWith("s")) return [word, `${word}es`];
+  return [word, `${word}s`];
+}
+
+const FISH_WORDS = ["fish", ...FISH_SPECIES.flatMap(withPlural)];
+const SHELLFISH_WORDS = ["shellfish", ...SHELLFISH_SPECIES.flatMap(withPlural)];
+
+// A protein as the table spells it: lowercase, and a plural turned back into its singular
+// when the table knows it ("Clams" -> "clam"). Anything the table does not know comes back as is.
+function normalizeProtein(protein: string | null): string {
+  const wanted = (protein ?? "").trim().toLowerCase();
+  if (FISH_WORDS.includes(wanted) || SHELLFISH_WORDS.includes(wanted)) {
+    const singular = [...FISH_SPECIES, ...SHELLFISH_SPECIES].find((species) => withPlural(species).includes(wanted));
+    return singular ?? wanted;
+  }
+  return wanted;
+}
+
 // protein word -> the words that signal it. Matched as whole words, case-insensitive.
 const KEYWORDS: Array<[protein: string, words: string[]]> = [
   ["chicken", ["chicken", "hen"]],
@@ -15,8 +47,8 @@ const KEYWORDS: Array<[protein: string, words: string[]]> = [
   ["goat", ["goat"]],
   ["turkey", ["turkey"]],
   ["duck", ["duck"]],
-  ["shellfish", ["shrimp", "prawn", "prawns", "scallop", "scallops", "crab", "lobster", "mussels", "clams", "squid", "calamari"]],
-  ["fish", ["fish", "salmon", "cod", "tuna", "haddock", "trout", "halibut", "tilapia", "mackerel", "sardines", "anchovies", "snapper", "bass", "monkfish"]],
+  ["shellfish", SHELLFISH_WORDS],
+  ["fish", FISH_WORDS],
   ["tofu", ["tofu", "tempeh"]],
   ["beans", ["beans", "lentils", "chickpeas", "dal"]],
   ["eggs", ["egg", "eggs"]],
@@ -73,8 +105,8 @@ function firstMatch(words: string[]): string | null {
 // This small table says which proteins belong to which family, so a beef dish counts for a
 // "max red-meat 2" rule even when nobody tagged it. Explicit tags keep working as before.
 
-const FISH = ["fish", "salmon", "tuna", "cod", "tilapia", "halibut", "trout", "haddock", "mackerel", "sardines", "anchovies", "snapper", "bass", "monkfish", "catfish", "mahi-mahi", "swordfish"];
-const SHELLFISH = ["shellfish", "shrimp", "prawn", "prawns", "crab", "lobster", "scallop", "scallops", "mussels", "clams", "oysters"];
+const FISH = ["fish", ...FISH_SPECIES.flatMap(withPlural)];
+const SHELLFISH = ["shellfish", ...SHELLFISH_SPECIES.flatMap(withPlural)];
 
 export const PROTEIN_GROUPS: Record<string, string[]> = {
   "red-meat": ["beef", "pork", "lamb", "goat", "veal", "venison", "bison"],
@@ -86,7 +118,7 @@ export const PROTEIN_GROUPS: Record<string, string[]> = {
 
 // The groups a protein belongs to ("beef" -> ["red-meat"], "salmon" -> ["fish", "seafood"]).
 export function groupsOfProtein(protein: string | null): string[] {
-  const wanted = (protein ?? "").trim().toLowerCase();
+  const wanted = (protein ?? "").trim().toLowerCase(); // the seafood lists hold singular and plural
   if (wanted === "") return [];
   return Object.entries(PROTEIN_GROUPS).filter(([, members]) => members.includes(wanted)).map(([group]) => group);
 }
@@ -95,7 +127,7 @@ export function groupsOfProtein(protein: string | null): string[] {
 // its protein, one of its tags, or a group its protein belongs to.
 export function dishCountsFor(protein: string | null, tags: readonly string[], tag: string): boolean {
   const wanted = tag.trim().toLowerCase();
-  if ((protein ?? "").trim().toLowerCase() === wanted) return true;
+  if ((protein ?? "").trim().toLowerCase() === wanted || normalizeProtein(protein) === normalizeProtein(wanted)) return true;
   if (tags.some((t) => t.trim().toLowerCase() === wanted)) return true;
   return groupsOfProtein(protein).includes(wanted);
 }

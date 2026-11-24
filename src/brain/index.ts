@@ -61,6 +61,7 @@ export interface BrainSettings {
 export interface ClaudeBrainOptions {
   callModel: CallModel;
   settings: BrainSettings;
+  maxOutputTokens?: number; // config.toml [model] maxOutputTokens; the ingredient fill never asks for less
   log?: (line: string) => void;
 }
 
@@ -94,7 +95,7 @@ export function describeNights(nights: readonly Night[]): string {
 
 // What the scheduler calls: the brain wired to a real, tool-less Messages API call.
 export function createBrain(options: ClaudeCallerOptions & { settings: BrainSettings; log?: (line: string) => void }): ClaudeBrain {
-  return new ClaudeBrain({ callModel: createClaudeCaller(options), settings: options.settings, log: options.log });
+  return new ClaudeBrain({ callModel: createClaudeCaller(options), settings: options.settings, maxOutputTokens: options.maxTokens, log: options.log });
 }
 
 // A parsed answer and what the rule check made of it.
@@ -109,8 +110,15 @@ type Attempt<T> =
 export const CUT_OFF_PROBLEM = "the answer was cut off because it ran past the model's output limit (raise maxOutputTokens in config.toml if this keeps happening)";
 
 // A week's ingredient lines can run long (up to seven dishes of fifteen lines or more, as JSON),
-// so this call asks for more room than the everyday limit.
+// so this call asks for more room than the everyday limit: 16000 tokens, or the configured
+// maxOutputTokens when that is higher. There is no separate setting for it.
 export const FILL_MAX_TOKENS = 16_000;
+
+export function fillBudget(configuredMaxOutputTokens: number | undefined): number {
+  return Math.max(FILL_MAX_TOKENS, configuredMaxOutputTokens ?? 0);
+}
+
+export const FILL_CUT_OFF_PROBLEM = `the answer was cut off because it ran past the model's output limit (this call allows ${FILL_MAX_TOKENS} tokens, or maxOutputTokens in config.toml if that is higher: raise maxOutputTokens above ${FILL_MAX_TOKENS} if this keeps happening)`;
 
 export class ClaudeBrain implements Brain {
   private system: string;
@@ -120,9 +128,11 @@ export class ClaudeBrain implements Brain {
   // handle() before fillIngredients() in the same job.
   private lastSections: readonly string[] = DEFAULT_GROCERY_SECTIONS;
   private settings: BrainSettings;
+  private maxOutputTokens: number | undefined;
 
   constructor(options: ClaudeBrainOptions) {
     this.settings = options.settings;
+    this.maxOutputTokens = options.maxOutputTokens;
     this.system = buildSystemPrompt(options.settings);
     this.callModel = options.callModel;
     this.log = options.log ?? (() => {});
@@ -139,7 +149,7 @@ export class ClaudeBrain implements Brain {
     const attempt = await this.twoAttempts<IngredientFill[]>(renderFillRequest(requests, this.lastSections), (answer) => {
       const parsed = parseIngredientFills(answer, requests, this.lastSections);
       return parsed.ok ? { kind: "ok", value: parsed.value } : { kind: "unparseable", problems: parsed.problems };
-    }, this.system, FILL_MAX_TOKENS);
+    }, this.system, fillBudget(this.maxOutputTokens), FILL_CUT_OFF_PROBLEM);
     if (attempt.kind === "ok") return attempt.value;
     throw new BrainError("parse", `The ingredient lines were unusable twice: ${attempt.problems.join("; ")}`);
   }
@@ -266,13 +276,13 @@ export class ClaudeBrain implements Brain {
   // ----- Shared -----
 
   // At most two model calls: the first, and one retry with every problem named.
-  private async twoAttempts<T>(prompt: string, grade: (answer: string) => Attempt<T>, system: string = this.system, maxTokens?: number): Promise<Attempt<T>> {
+  private async twoAttempts<T>(prompt: string, grade: (answer: string) => Attempt<T>, system: string = this.system, maxTokens?: number, cutOffProblem: string = CUT_OFF_PROBLEM): Promise<Attempt<T>> {
     let currentPrompt = prompt;
     let last: Attempt<T> | null = null;
     for (let attempt = 1; attempt <= 2; attempt++) {
       const answer = await this.callModel({ system, prompt: currentPrompt, ...(maxTokens ? { maxTokens } : {}) });
       // A cut-off answer is never graded as if it were whole: it may even parse, with the end missing.
-      last = answer.cutOff ? { kind: "unparseable", problems: [CUT_OFF_PROBLEM] } : grade(answer.text);
+      last = answer.cutOff ? { kind: "unparseable", problems: [cutOffProblem] } : grade(answer.text);
       if (last.kind === "ok") return last;
       this.log(`model answer ${attempt} of 2 was unusable: ${last.problems.join("; ")}`);
       currentPrompt = retryPrompt(prompt, answer.text, last.problems);

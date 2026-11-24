@@ -94,6 +94,7 @@ test("Telegram: welcome, two adults answer, a native reply to the read-back save
     healthIntervalMs: 60 * 60 * 1000,
   });
   messengerUp(messenger);
+  void worker.reaskUnansweredQuestion();
   running.push(messenger);
   await worker.idle();
 

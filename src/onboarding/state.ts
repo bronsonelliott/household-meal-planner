@@ -134,6 +134,9 @@ export interface LastAsk {
   topic: TopicId;
   delivered: boolean; // the send was confirmed
   reasked: boolean; // this is the "in case my last message didn't reach you" repeat
+  // The chat app is holding the question to deliver later (WhatsApp, outside its reply window).
+  // It will arrive on its own, so asking it again would post it twice. Missing in older files.
+  queued?: boolean;
 }
 
 export interface OnboardingState {
@@ -238,15 +241,17 @@ export function startAsking(state: OnboardingState, now: Date): OnboardingState 
 }
 
 // Notes how the question for `topic` went out.
-export function recordAsk(state: OnboardingState, topic: TopicId, delivered: boolean, reasked: boolean, now: Date): OnboardingState {
-  return touch({ ...state, lastAsk: { topic, delivered, reasked } }, now);
+// `queued` means the chat app kept it for later: not delivered yet, but not lost either.
+export function recordAsk(state: OnboardingState, topic: TopicId, delivered: boolean, reasked: boolean, now: Date, queued = false): OnboardingState {
+  return touch({ ...state, lastAsk: { topic, delivered, reasked, queued } }, now);
 }
 
 // The topic being waited on, when its question may never have been seen; otherwise null.
+// A queued question is not in this group: it is on its way, and repeating it would send it twice.
 export function unconfirmedQuestion(state: OnboardingState): TopicId | null {
   const ask = state.lastAsk;
   if (state.phase !== "asking" || state.currentTopic === null || !ask) return null;
-  return ask.topic === state.currentTopic && !ask.delivered ? state.currentTopic : null;
+  return ask.topic === state.currentTopic && !ask.delivered && !ask.queued ? state.currentTopic : null;
 }
 
 // True at start-up when that unseen question has not been repeated yet. After one repeat a

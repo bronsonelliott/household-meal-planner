@@ -114,6 +114,27 @@ describe("validateProposal", () => {
     expect(check(ok).problems).toEqual([]);
   });
 
+  test("different fish species need different nights, so they add up against the limit", () => {
+    // Limit of two: salmon on Monday plus tuna twice means at least three fish nights.
+    const rules: Array<[string, RuleCheck]> = [
+      ["Salmon Mondays.", { kind: "fixed", night: "monday", value: "salmon" }],
+      ["Tuna twice a week.", { kind: "min", tag: "tuna", count: 2 }],
+    ];
+    expect(check(proposal(rules, [TACOS])).problems.join(" ")).toContain("fish on 3 nights");
+    // A rule about fish as a whole can share nights with those, so it does not add.
+    const overlap: Array<[string, RuleCheck]> = [
+      ["Salmon Mondays.", { kind: "fixed", night: "monday", value: "salmon" }],
+      ["Fish twice a week.", { kind: "min", tag: "fish", count: 2 }],
+    ];
+    expect(check(proposal(overlap, [TACOS, dish("Baked salmon", "salmon")])).problems).toEqual([]);
+    // Two species minimums of two each: four nights.
+    const two: Array<[string, RuleCheck]> = [
+      ["Tuna twice.", { kind: "min", tag: "tuna", count: 2 }],
+      ["Cod twice.", { kind: "min", tag: "cod", count: 2 }],
+    ];
+    expect(check(proposal(two, [TACOS])).problems.join(" ")).toContain("fish on 4 nights");
+  });
+
   test("the discovery requirement against eating-out and away nights", () => {
     const rules: Array<[string, RuleCheck]> = (["friday", "saturday", "sunday", "monday", "tuesday", "wednesday", "thursday"] as const).map((night) => [`${night} out.`, { kind: "fixed", night, value: "out" }]);
     expect(validateProposal(proposal(rules), SETTINGS).problems.join(" ")).toContain("0 nights are left");

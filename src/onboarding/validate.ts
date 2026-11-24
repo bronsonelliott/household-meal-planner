@@ -162,31 +162,65 @@ export function validateProposal(proposal: Proposal, settings: ValidationSetting
     }
   }
 
-  // 7b. Nights that fixed and require rules already force onto one protein, against the same limit.
-  // "fixed friday chicken" and "require chicken weeknights" both fill nights with chicken; a min
-  // rule only adds nights beyond those. (Rule 7 above covers a min rule on its own.)
-  const proteins = new Set(proposal.dishes.map((dish) => capGroupOf(dish.protein)).filter((protein) => protein !== ""));
-  for (const protein of proteins) {
-    const forced = new Set<Night>();
+  // 7b. Nights that fixed, require and min rules already force onto one protein, against the same
+  // limit. "fixed friday chicken" and "require chicken weeknights" both fill nights with chicken; a
+  // min rule only adds nights beyond those. (Rule 7 above covers a lone min rule on its own.)
+  //
+  // For a group like fish, a rule about one species ("fixed monday salmon", "min tuna 2") needs
+  // nights of its own: salmon and tuna can't share a night, so those add up. A rule about the whole
+  // group ("min fish 2", "require fish friday") can land on the same nights as the species rules,
+  // so it only counts if it asks for more than they do.
+  const groups = new Set<string>(proposal.dishes.map((dish) => capGroupOf(dish.protein)).filter((protein) => protein !== ""));
+  // The rules themselves can name seafood species no dish has yet. (Other words, like "out", are not proteins.)
+  const addSeafood = (word: string) => {
+    const group = capGroupOf(word);
+    if (group === "fish" || group === "shellfish") groups.add(group);
+  };
+  for (const entry of fixed) addSeafood(entry.value);
+  for (const need of requires) addSeafood(need.tag);
+  for (const rule of rules) if (rule.check.kind === "min") addSeafood(rule.check.tag);
+
+  for (const group of groups) {
+    const forced = new Set<Night>(); // every night already set to this group, whatever the species
     const sources: Rule[] = [];
+    const speciesNights = new Map<string, Set<Night>>(); // species -> its fixed/required nights
+    const speciesMins = new Map<string, number>(); // species -> the most any min rule asks for
+    let groupMin = 0; // the most a rule about the whole group asks for
+
+    const addNights = (name: string, nights: Night[], rule: Rule) => {
+      for (const night of nights) forced.add(night);
+      sources.push(rule);
+      if (name !== group) speciesNights.set(name, new Set([...(speciesNights.get(name) ?? []), ...nights]));
+    };
     for (const entry of fixed) {
-      if (capGroupOf(entry.value) === protein) {
-        forced.add(entry.night);
-        sources.push(entry.rule);
-      }
+      if (capGroupOf(entry.value) === group) addNights(entry.value.toLowerCase(), [entry.night], entry.rule);
     }
     for (const need of requires) {
-      if (capGroupOf(need.tag) === protein) {
-        for (const night of need.nights) forced.add(night);
-        sources.push(need.rule);
-      }
+      if (capGroupOf(need.tag) === group) addNights(need.tag.toLowerCase(), need.nights, need.rule);
     }
-    if (forced.size === 0) continue;
-    const mins = rules.flatMap((rule) => (rule.check.kind === "min" && capGroupOf(rule.check.tag) === protein ? [rule.check.count] : []));
-    const total = Math.max(forced.size, ...mins);
+    let minRules = 0;
+    for (const rule of rules) {
+      if (rule.check.kind !== "min" || capGroupOf(rule.check.tag) !== group) continue;
+      const name = rule.check.tag.toLowerCase();
+      minRules += 1;
+      if (name === group) groupMin = Math.max(groupMin, rule.check.count);
+      else speciesMins.set(name, Math.max(speciesMins.get(name) ?? 0, rule.check.count));
+      if (forced.size > 0) sources.push(rule);
+    }
+
+    // Species are disjoint: each needs the larger of its set nights and its minimum.
+    const species = new Set([...speciesNights.keys(), ...speciesMins.keys()]);
+    let speciesTotal = 0;
+    for (const name of species) speciesTotal += Math.max(speciesNights.get(name)?.size ?? 0, speciesMins.get(name) ?? 0);
+    const total = Math.max(forced.size, groupMin, speciesTotal);
+
+    // A lone min rule is rule 7's job; here a group needs nights already set, or several species rules.
+    if (forced.size === 0 && species.size < 2) continue;
+    if (minRules === 0 && forced.size === 0) continue;
     if (total > cap_) {
       const named = sources.map(quote).join(" and ");
-      problems.push(`${named} would put ${protein} on ${total} nights (${listNights([...forced])} are already set), but the limit is ${cap_} nights for any one protein.`);
+      const setNote = forced.size > 0 ? ` (${listNights([...forced])} are already set)` : "";
+      problems.push(`${named} would put ${group} on ${total} nights${setNote}, but the limit is ${cap_} nights for any one protein.`);
     }
   }
 

@@ -110,3 +110,40 @@ describe("the list built from the live week's lines", () => {
     expect(text).not.toContain("tsp");
   });
 });
+
+describe("review fixes: grocery merging", () => {
+  test("a black pepper staple does not hide red peppers", () => {
+    const lines = listFor([["Vegetables", "red pepper, 2"]], [["Spices", "black pepper, 1/4 tsp"]], ["Black pepper"]);
+    expect(lines).toContain("Vegetables: red pepper, 2");
+  });
+
+  test("lines that differ in a shopping qualifier stay separate and keep it", () => {
+    const list = listFor(
+      [["Meat & Fish", "chicken thighs, boneless skinless, 2 lb"], ["Meat & Fish", "chicken thighs, boneless skinless, 1 lb"]],
+      [["Meat & Fish", "chicken thighs, bone-in, 1 lb"]],
+    );
+    expect(list).toContain("Meat & Fish: chicken thighs, boneless skinless, 3 lb");
+    expect(list).toContain("Meat & Fish: chicken thighs, bone-in, 1 lb");
+    expect(mergeItem(["rice, dried, 1 cup"])).toBe("rice, dried, 1 cup");
+  });
+
+  test("prep words do not keep lines apart", () => {
+    const list = listFor([["Vegetables", "onion, chopped, 1"]], [["Vegetables", "onion, diced, 2"]]);
+    expect(list).toContain("Vegetables: onion, 3");
+  });
+
+  test("ranges are summed at both ends", () => {
+    expect(mergeItem(["onion, 1-2", "onion, 1-2"])).toBe("onion, 2-4");
+    expect(mergeItem(["onion, 1 to 2", "onion, 1–2"])).toBe("onion, 2-4");
+    expect(mergeItem(["onion, 1-2", "onion, 1"])).toBe("onion, 2-3");
+  });
+
+  test("any unicode fraction adds up", () => {
+    expect(mergeItem(["stock, ⅜ cup", "stock, ⅜ cup"])).toBe("stock, 3/4 cup");
+    expect(mergeItem(["milk, ⅕ cup", "milk, ⅕ cup"])).toBe("milk, 2/5 cup");
+  });
+
+  test("amounts that cannot be read are never deduplicated", () => {
+    expect(mergeItem(["lemon juice, juice of 1 lemon", "lemon juice, juice of 1 lemon"])).toBe("lemon juice, juice of 1 lemon (x2)");
+  });
+});
