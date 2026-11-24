@@ -1,0 +1,84 @@
+# The household meal planner with Signal support: the same as deploy/Dockerfile, plus a Java
+# runtime and signal-cli (the program that talks to Signal).
+#
+# You must supply three build arguments. They are required on purpose, so you choose the version
+# and check what you download:
+#
+#   SIGNAL_CLI_VERSION   a signal-cli release, for example 0.13.12 (see
+#                        https://github.com/AsamK/signal-cli/releases). Use a current release:
+#                        Signal retires old clients, and an outdated one stops working.
+#   SIGNAL_CLI_SHA256    the SHA-256 checksum of that release's file signal-cli-<version>.tar.gz.
+#                        Download the file yourself once, from the releases page, check it
+#                        against what the project publishes, and compute the checksum:
+#                          shasum -a 256 signal-cli-<version>.tar.gz
+#                        The build stops if the download does not match, so a tampered or
+#                        corrupted file never ends up in your image.
+#   JRE_IMAGE            (optional) the Java runtime image to copy from. signal-cli's release notes
+#                        say which Java version a release needs; the default below is Java 21.
+#
+# Build (from the repository's top folder):
+#   docker build -f deploy/Dockerfile.signal -t household-meal-planner-signal \
+#     --build-arg SIGNAL_CLI_VERSION=<version> --build-arg SIGNAL_CLI_SHA256=<checksum> .
+#
+# In config.toml, point Signal at the copy in the image, and keep signal-cli's data in the state
+# volume so the bot's account keys survive restarts:
+#   [messaging.signal]
+#   cliPath = "/opt/signal-cli/bin/signal-cli"
+#   dataDir = "state/signal-cli"
+#   # javaHome is not needed: JAVA_HOME is already set in this image.
+#
+# Note: the release tarball carries signal's native library for 64-bit Intel/AMD Linux. On an ARM
+# machine (for example a Raspberry Pi) the plain release may not work; see docs/platforms/signal.md.
+
+ARG JRE_IMAGE=eclipse-temurin:21-jre
+FROM ${JRE_IMAGE} AS jre
+
+FROM oven/bun:1
+
+ARG SIGNAL_CLI_VERSION
+ARG SIGNAL_CLI_SHA256
+
+# Java, copied from the official runtime image rather than installed from this base image's own
+# (older) packages.
+COPY --from=jre /opt/java/openjdk /opt/java/openjdk
+ENV JAVA_HOME=/opt/java/openjdk
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
+
+# signal-cli, checked against the checksum before it is unpacked.
+USER root
+RUN set -eu; \
+    if [ -z "${SIGNAL_CLI_VERSION:-}" ] || [ -z "${SIGNAL_CLI_SHA256:-}" ]; then \
+      echo "Build stopped: pass --build-arg SIGNAL_CLI_VERSION=... and --build-arg SIGNAL_CLI_SHA256=... (see the top of this file)." >&2; \
+      exit 1; \
+    fi; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ca-certificates curl; \
+    curl -fsSL -o /tmp/signal-cli.tar.gz \
+      "https://github.com/AsamK/signal-cli/releases/download/v${SIGNAL_CLI_VERSION}/signal-cli-${SIGNAL_CLI_VERSION}.tar.gz"; \
+    echo "${SIGNAL_CLI_SHA256}  /tmp/signal-cli.tar.gz" | sha256sum -c -; \
+    mkdir -p /opt/signal-cli; \
+    tar -xzf /tmp/signal-cli.tar.gz -C /opt/signal-cli --strip-components=1; \
+    rm /tmp/signal-cli.tar.gz; \
+    apt-get purge -y curl; \
+    apt-get autoremove -y; \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile --production
+
+COPY src ./src
+COPY tsconfig.json ./
+COPY data.example ./data.example
+
+RUN mkdir -p /app/data /app/state && chown -R bun:bun /app/data /app/state
+USER bun
+
+ENV HMP_CONFIG=/app/config.toml
+VOLUME ["/app/data", "/app/state"]
+
+HEALTHCHECK --interval=60s --timeout=30s --start-period=3m --retries=1 \
+  CMD ["bun", "run", "check-health"]
+
+CMD ["bun", "run", "start"]

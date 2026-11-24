@@ -1,0 +1,12 @@
+{
+  "jsonrpc": "2.0",
+  "result": [
+    {
+      "recipient": "+15555550123",
+      "number": "+15555550123",
+      "uuid": "bbbbbbbb-0000-4000-8000-0000000000b1",
+      "isRegistered": true
+    }
+  ],
+  "id": "status"
+}

@@ -1,0 +1,14 @@
+# Keep secrets, your household's data, and build clutter out of the image.
+.git
+.github
+node_modules
+.env
+.env.*
+!.env.example
+config.toml
+data
+state
+vendor
+test
+docs
+deploy

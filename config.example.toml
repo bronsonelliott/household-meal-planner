@@ -1,0 +1,264 @@
+# config.toml: the settings for your household's dinner planner.
+#
+# How to use this file
+#   1. Copy it:            cp config.example.toml config.toml
+#   2. Edit config.toml    (this example file is only a template; the planner never reads it)
+#   3. Check your work:    bun run doctor
+#
+# The values below belong to a made-up household ("Alex" and "Sam") so you can see what each
+# setting looks like. Replace every one of them with your own.
+#
+# Rules of the road:
+#   - Text goes in "double quotes". Numbers and true/false do not.
+#   - A line starting with # is a note to you; the planner ignores it.
+#   - SECRETS NEVER GO IN THIS FILE. Passwords, API keys and tokens are kept in your computer's
+#     environment instead. Where a setting below ends in "Env", you write the NAME of the
+#     environment variable (for example "ANTHROPIC_API_KEY"), never the secret itself. The
+#     file .env.example lists the names.
+#   - Food preferences (rules, dishes, grocery sections) are NOT here. They live in your
+#     profile.md, which you can also edit by hand.
+#   - If something is wrong, `bun run doctor` tells you which setting and why, in plain words.
+
+
+# ---------------------------------------------------------------------------------------------
+# Who this is for
+# ---------------------------------------------------------------------------------------------
+[household]
+name = "The Example Household"
+# What the bot calls itself, and the name people use to talk to it in the chat.
+botName = "Dinner Bot"
+
+
+# ---------------------------------------------------------------------------------------------
+# The people who may talk to the bot
+# ---------------------------------------------------------------------------------------------
+# One [[members]] block per adult. Anyone not listed here is ignored, even if they are in the
+# same chat. You need at least one "admin".
+#
+#   id          a short lowercase label for this person (letters, digits, dashes)
+#   name        what the household calls them; the bot uses it when it talks about them
+#   role        "admin" (can change settings and recipe sources) or "adult" (plans dinners)
+#   identities  how the chat app knows them. You only need the line for the chat app you picked
+#               in [messaging] below. Signal wants a long "account ID" (a UUID); Telegram wants a
+#               number. The setup guide for each chat app shows how to find these.
+
+[[members]]
+id = "alex"
+name = "Alex"
+role = "admin"
+
+[members.identities]
+signal = "11111111-1111-4111-8111-111111111111"
+# telegram = "100000001"
+# whatsapp = "15555550101"
+# imessage = "+15555550101"
+
+[[members]]
+id = "sam"
+name = "Sam"
+role = "adult"
+
+[members.identities]
+signal = "22222222-2222-4222-8222-222222222222"
+# telegram = "100000002"
+# whatsapp = "15555550102"
+# imessage = "+15555550102"
+
+
+# ---------------------------------------------------------------------------------------------
+# When the bot acts
+# ---------------------------------------------------------------------------------------------
+[schedule]
+# Your time zone, written as a city name from the standard list
+# (https://en.wikipedia.org/wiki/List_of_tz_database_time_zones), for example
+# "America/New_York", "America/Chicago", "America/Los_Angeles", "Europe/London",
+# "Australia/Sydney". This is required: every time below is in this zone. Daylight saving
+# time is handled for you.
+timezone = "America/New_York"
+
+# The day and time the bot posts next week's draft, as 24-hour HH:MM ("16:00" is 4 PM).
+draftDay = "friday"
+draftTime = "16:00"
+
+# A draft that goes out this many minutes after draftTime is marked "(late)" in the chat.
+lateAfterMinutes = 30
+
+# If the bot was off or failing at the draft time, it keeps trying until this moment. After it,
+# the week is skipped (and the admin is alerted, if alerts are on).
+[schedule.catchUpUntil]
+day = "sunday"
+time = "12:00"
+
+
+# ---------------------------------------------------------------------------------------------
+# How dinners are planned
+# ---------------------------------------------------------------------------------------------
+[planning]
+# What the word "weeknights" means in a house rule such as "no fish on weeknights".
+weeknights = ["monday", "tuesday", "wednesday", "thursday"]
+
+# The discovery rule: each week's draft needs at least this many dinners that are new to your
+# household (not on your usual or also-like lists, and not cooked in the last few weeks). It
+# doesn't matter where the dish comes from, and a link alone doesn't make a dish new. Use 0 to
+# turn this off.
+minDiscoveryNights = 1
+
+
+# ---------------------------------------------------------------------------------------------
+# Which chat app the bot lives in
+# ---------------------------------------------------------------------------------------------
+[messaging]
+# One of: "signal", "telegram", "whatsapp" (beta), "imessage" (beta).
+# Only one chat app is active at a time.
+platform = "signal"
+
+# "group":         the bot sits in one household chat everyone shares.
+# "household-dms": the bot talks to each person in a private chat and relays between them.
+# (WhatsApp's official service cannot join groups, so it defaults to "household-dms".)
+[messaging.conversation]
+mode = "group"
+
+# ----- Signal -----
+[messaging.signal]
+# Where the signal-cli program is. The default is shown.
+cliPath = "vendor/signal-cli/bin/signal-cli"
+# signal-cli's own folder, which holds the bot account's keys. Back this up; keep it private.
+dataDir = "state/signal-cli"
+# The folder of a Java install, if signal-cli can't find Java by itself. Leave it out to use the
+# Java already on your computer. Example on a Mac with Homebrew: "/opt/homebrew/opt/openjdk".
+# javaHome = "/opt/homebrew/opt/openjdk"
+# The bot's own Signal phone number, with country code.
+botNumber = "+15555550123"
+# The household group's ID (a long code that ends in "="). The setup guide shows how to list it.
+groupId = "RVhBTVBMRS1HUk9VUC1JRC1ERU1PLTAwMDAwMDAwMDA="
+
+# ----- Telegram (only read when platform = "telegram") -----
+# [messaging.telegram]
+# The NAME of the environment variable that holds the bot token from @BotFather.
+# botTokenEnv = "TELEGRAM_BOT_TOKEN"
+# The household group's chat ID (a negative number).
+# chatId = "-1000000000000"
+
+# ----- WhatsApp, beta (only read when platform = "whatsapp") -----
+# Needs conversation.mode = "household-dms" (the default for WhatsApp): the official service
+# cannot join group chats. See docs/platforms/whatsapp.md.
+# [messaging.whatsapp]
+# The Phone number ID from Meta's WhatsApp setup page. It is not the phone number itself.
+# phoneNumberId = "100000000000000"
+# The Graph API version to talk to.
+# apiVersion = "v23.0"
+# The NAMES of the environment variables that hold the secrets.
+# accessTokenEnv = "WHATSAPP_ACCESS_TOKEN"
+# appSecretEnv = "WHATSAPP_APP_SECRET"
+# verifyTokenEnv = "WHATSAPP_VERIFY_TOKEN"
+#
+# Where the bridge listens for Meta's webhook calls. Point your tunnel or reverse proxy here.
+# [messaging.whatsapp.webhook]
+# host = "127.0.0.1"
+# port = 8787
+# path = "/whatsapp/webhook"
+#
+# The approved message template sent to someone who has not written to the bot in 24 hours.
+# Without one, such a person cannot be sent anything until they write first.
+# [messaging.whatsapp.template]
+# name = "meal_plan_ready"
+# language = "en_US"
+
+# ----- iMessage, beta (only read when platform = "imessage") -----
+# Needs a Mac running the free BlueBubbles server. The bot itself can run anywhere that can reach
+# the server's address. See docs/platforms/imessage.md.
+# [messaging.imessage]
+# The address of your BlueBubbles server (no password in it).
+# serverUrl = "http://192.168.1.20:1234"
+# The NAME of the environment variable that holds the server password.
+# passwordEnv = "BLUEBUBBLES_PASSWORD"
+# The household group chat's GUID, for conversation.mode = "group". The setup guide shows where
+# to find it. In "household-dms" mode leave it out.
+# chatGuid = "iMessage;+;chat000000000000000000"
+# "apple-script" (default) works on a stock Mac. "private-api" also lets the bot react to
+# messages, but needs BlueBubbles' Private API, which needs System Integrity Protection off.
+# sendMethod = "apple-script"
+# How often to ask the server for new messages, in seconds.
+# pollIntervalSeconds = 5
+# Also read plain text messages (SMS), not just iMessages. Replies still go out as iMessage.
+# allowSms = false
+
+
+# ---------------------------------------------------------------------------------------------
+# The AI model that does the planning
+# ---------------------------------------------------------------------------------------------
+[model]
+id = "claude-sonnet-5-5"
+# The NAME of the environment variable holding your Anthropic API key. Not the key itself.
+apiKeyEnv = "ANTHROPIC_API_KEY"
+# How long to wait for one answer before giving up, in milliseconds (120000 = 2 minutes).
+timeoutMs = 120000
+# The longest answer the model may write, in tokens.
+maxOutputTokens = 4096
+
+
+# ---------------------------------------------------------------------------------------------
+# Recipe websites
+# ---------------------------------------------------------------------------------------------
+# Limits that keep the bot a polite visitor on recipe websites. The defaults are gentle; most
+# households never change these.
+[recipes]
+# How the bot introduces itself when it asks a website for a page. Add a way to reach you
+# (an email address or your project's web page) so a site owner can contact you.
+userAgent = "household-meal-planner/0.1 (self-hosted; contact: you@example.com)"
+pagesPerSourcePerDay = 20
+sitemapsPerSourcePerDay = 10
+secondsBetweenRequests = 5
+
+# Recipe APIs (TheMealDB, and your own Mealie or Tandoor) are asked in the background, never
+# while a week is being planned. How often, in hours (168 = weekly):
+refreshHours = 168
+# The pause between two requests to the same API server, in seconds. APIs are built for
+# this, so it is shorter than the pause for ordinary websites above.
+providerSecondsBetweenRequests = 1
+
+# TheMealDB is a free recipe API built for apps, and it is on by default. With no key set, the bot
+# uses TheMealDB's public test key ("1"). TheMealDB asks apps that are public or used in production
+# to use a supporter key instead: set the environment variable below to yours.
+[recipes.themealdb]
+apiKeyEnv = "THEMEALDB_API_KEY"
+lookupsPerRefresh = 40 # new recipes read per refresh; a bigger backlog is finished over a few days
+
+# Your own Mealie server: remove the "#" at the start of the next lines and fill them in.
+# The address may be on your home network. The token comes from an environment variable;
+# create one in Mealie under your profile, "API Tokens".
+# [recipes.mealie]
+# url = "http://mealie.local:9000"
+# tokenEnv = "MEALIE_API_TOKEN"
+# maxRecipes = 300
+
+# Your own Tandoor server, the same way. Create the token in Tandoor under Settings, "API".
+# [recipes.tandoor]
+# url = "http://tandoor.local:8080"
+# tokenEnv = "TANDOOR_API_TOKEN"
+# maxRecipes = 300
+
+
+# ---------------------------------------------------------------------------------------------
+# Alerts to the admin
+# ---------------------------------------------------------------------------------------------
+# A separate, send-only Telegram message to the admin when something needs a human (the model API
+# key failed, the draft did not go out, the bridge went quiet). It works whichever chat app your
+# household uses. "none" turns it off: alerts then only appear in the logs. The watchdog that sends
+# most of them is `bun run check-health`; see docs/operations.md.
+[alerts]
+channel = "none"
+# telegramBotTokenEnv = "TELEGRAM_BOT_TOKEN"
+# telegramChatId = "100000001"
+
+
+# ---------------------------------------------------------------------------------------------
+# Where files live
+# ---------------------------------------------------------------------------------------------
+# Folders are written relative to this file. The defaults are fine for most people.
+[paths]
+# Your profile.md, weekly plans and log.
+dataDir = "./data"
+# Running state: the message journal, lock file, markers. Safe to delete when the bot is stopped,
+# except signal-cli's folder (above), which holds the bot account's keys.
+stateDir = "./state"

@@ -1,0 +1,22 @@
+# Runs the type check and the test suite on every push and pull request.
+# The tests use fakes and temporary folders only, so this needs no secrets.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.x
+      - run: bun install --frozen-lockfile
+      - run: bunx tsc --noEmit
+      - run: bun test

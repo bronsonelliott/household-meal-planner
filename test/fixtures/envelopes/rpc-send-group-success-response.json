@@ -1,0 +1,18 @@
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "timestamp": 1790806738638,
+    "results": [
+      {
+        "recipientAddress": {
+          "uuid": "aaaaaaaa-0000-4000-8000-000000000001",
+          "number": null,
+          "username": null
+        },
+        "groupId": "VEVTVC1HUk9VUC1GSVhUVVJFLTAwMDAwMDAwMDAwMDA=",
+        "type": "SUCCESS"
+      }
+    ]
+  },
+  "id": "send"
+}

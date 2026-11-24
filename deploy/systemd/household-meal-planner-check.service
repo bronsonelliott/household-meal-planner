@@ -1,0 +1,13 @@
+# One run of the watchdog. household-meal-planner-check.timer starts it every minute.
+# It only reads state files, so it is safe to run while the bridge is running. It exits non-zero
+# while something is wrong, which shows up in `systemctl status household-meal-planner-check`.
+[Unit]
+Description=Household meal planner health check
+
+[Service]
+Type=oneshot
+User=mealplanner
+WorkingDirectory=/opt/household-meal-planner
+EnvironmentFile=/opt/household-meal-planner/.env
+Environment=HMP_CONFIG=/opt/household-meal-planner/config.toml
+ExecStart=/home/mealplanner/.bun/bin/bun run check-health

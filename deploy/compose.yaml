@@ -1,0 +1,36 @@
+# Run the household meal planner with Docker Compose.
+#
+# Before the first start (from the repository's top folder):
+#   cp config.example.toml config.toml      and edit it
+#   cp .env.example .env                    and fill in your secrets
+#   mkdir -p data state
+#   cp data.example/profile.md data/profile.md      and edit it
+#
+# Then:
+#   docker compose -f deploy/compose.yaml run --rm planner bun run doctor
+#   docker compose -f deploy/compose.yaml up -d --build
+#   docker compose -f deploy/compose.yaml logs -f
+#
+# For Signal, change `dockerfile` below to deploy/Dockerfile.signal and add the two build args.
+services:
+  planner:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      # args:                                  # Signal only (deploy/Dockerfile.signal)
+      #   SIGNAL_CLI_VERSION: "0.13.12"
+      #   SIGNAL_CLI_SHA256: "put-the-checksum-you-verified-here"
+    image: household-meal-planner
+    restart: unless-stopped
+    env_file: ../.env
+    environment:
+      HMP_CONFIG: /app/config.toml
+    volumes:
+      - ../config.toml:/app/config.toml:ro
+      - ../data:/app/data
+      - ../state:/app/state
+    # WhatsApp (beta) only: Meta calls the bot's webhook, so this port must be reachable through
+    # your tunnel or reverse proxy. It must match [messaging.whatsapp.webhook] in config.toml,
+    # and in that file set host = "0.0.0.0" so it listens inside the container.
+    # ports:
+    #   - "127.0.0.1:8787:8787"

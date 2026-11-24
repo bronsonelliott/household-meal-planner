@@ -1,0 +1,40 @@
+{
+  "jsonrpc": "2.0",
+  "result": [
+    {
+      "id": "VEVTVC1HUk9VUC1GSVhUVVJFLTAwMDAwMDAwMDAwMDA=",
+      "name": "Test group",
+      "description": "",
+      "isMember": true,
+      "isBlocked": false,
+      "messageExpirationTime": 0,
+      "members": [
+        {
+          "number": "+15555550123",
+          "uuid": "bbbbbbbb-0000-4000-8000-0000000000b0",
+          "isAdmin": true
+        },
+        {
+          "number": null,
+          "uuid": "aaaaaaaa-0000-4000-8000-000000000001",
+          "isAdmin": false
+        }
+      ],
+      "pendingMembers": [],
+      "requestingMembers": [],
+      "admins": [
+        {
+          "number": "+15555550123",
+          "uuid": "bbbbbbbb-0000-4000-8000-0000000000b0"
+        }
+      ],
+      "banned": [],
+      "permissionAddMember": "EVERY_MEMBER",
+      "permissionEditDetails": "EVERY_MEMBER",
+      "permissionSendMessage": "EVERY_MEMBER",
+      "groupInviteLink": null,
+      "isTerminated": false
+    }
+  ],
+  "id": "groups"
+}

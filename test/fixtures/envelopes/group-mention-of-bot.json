@@ -1,0 +1,45 @@
+{
+  "jsonrpc": "2.0",
+  "method": "receive",
+  "params": {
+    "subscription": 0,
+    "result": {
+      "envelope": {
+        "source": "aaaaaaaa-0000-4000-8000-000000000001",
+        "sourceNumber": null,
+        "sourceUuid": "aaaaaaaa-0000-4000-8000-000000000001",
+        "sourceName": "Adult One",
+        "sourceDevice": 1,
+        "timestamp": 1790806640250,
+        "serverReceivedTimestamp": 1790806640314,
+        "serverDeliveredTimestamp": 1790806710674,
+        "dataMessage": {
+          "timestamp": 1790806640250,
+          "message": "\ufffc hello Claude. This is test message 4.",
+          "expiresInSeconds": 0,
+          "isExpirationUpdate": false,
+          "viewOnce": false,
+          "isEndSession": false,
+          "isProfileKeyUpdate": false,
+          "hasProfileKey": true,
+          "mentions": [
+            {
+              "name": "+15555550123",
+              "number": "+15555550123",
+              "uuid": "bbbbbbbb-0000-4000-8000-0000000000b0",
+              "start": 0,
+              "length": 1
+            }
+          ],
+          "groupInfo": {
+            "groupId": "VEVTVC1HUk9VUC1GSVhUVVJFLTAwMDAwMDAwMDAwMDA=",
+            "groupName": "Test group",
+            "revision": 0,
+            "type": "DELIVER"
+          }
+        }
+      },
+      "account": "+15555550123"
+    }
+  }
+}

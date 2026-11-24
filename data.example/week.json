@@ -1,0 +1,199 @@
+{
+  "weekOf": "2026-10-05",
+  "status": "drafted",
+  "nights": {
+    "monday": {
+      "kind": "dish",
+      "dish": "Chicken tacos",
+      "rule": "Mexican night",
+      "protein": "chicken",
+      "tags": [
+        "chicken",
+        "mexican",
+        "quick"
+      ],
+      "pool": "usual",
+      "ingredients": [
+        {
+          "section": "Meat & Fish",
+          "text": "chicken thighs, 2 lb"
+        },
+        {
+          "section": "Breads",
+          "text": "corn tortillas, 1 pack"
+        },
+        {
+          "section": "Vegetables",
+          "text": "white onion"
+        },
+        {
+          "section": "Vegetables",
+          "text": "cilantro"
+        },
+        {
+          "section": "Condiments",
+          "text": "salsa verde"
+        }
+      ],
+      "pinnedBy": null,
+      "changedBy": null,
+      "swappedFromDraft": false,
+      "changedAfterLock": false
+    },
+    "tuesday": {
+      "kind": "dish",
+      "dish": "Spaghetti and meatballs",
+      "rule": "pasta night",
+      "protein": "beef",
+      "tags": [
+        "pasta",
+        "red-meat"
+      ],
+      "pool": "usual",
+      "ingredients": [
+        {
+          "section": "Meat & Fish",
+          "text": "ground beef, 1 lb"
+        },
+        {
+          "section": "Pasta & Rice",
+          "text": "spaghetti, 1 lb"
+        },
+        {
+          "section": "Sauces & Oils",
+          "text": "marinara, 1 jar"
+        },
+        {
+          "section": "Dairy",
+          "text": "parmesan"
+        }
+      ],
+      "pinnedBy": "Sam",
+      "changedBy": "Sam",
+      "swappedFromDraft": false,
+      "changedAfterLock": false
+    },
+    "wednesday": {
+      "kind": "dish",
+      "dish": "Shrimp fried rice",
+      "rule": "quick weeknight",
+      "protein": "fish",
+      "tags": [
+        "quick"
+      ],
+      "pool": "also-like",
+      "ingredients": [
+        {
+          "section": "Meat & Fish",
+          "text": "shrimp, 1 lb"
+        },
+        {
+          "section": "Pasta & Rice",
+          "text": "jasmine rice"
+        },
+        {
+          "section": "Frozen Foods",
+          "text": "peas and carrots"
+        },
+        {
+          "section": "Dairy",
+          "text": "eggs, 3"
+        }
+      ],
+      "pinnedBy": null,
+      "changedBy": null,
+      "swappedFromDraft": false,
+      "changedAfterLock": false
+    },
+    "thursday": {
+      "kind": "dish",
+      "dish": "Sausage and peppers",
+      "rule": "quick weeknight",
+      "protein": "pork",
+      "tags": [
+        "quick"
+      ],
+      "pool": "new",
+      "ingredients": [
+        {
+          "section": "Meat & Fish",
+          "text": "smoked sausage, 1 lb"
+        },
+        {
+          "section": "Vegetables",
+          "text": "bell peppers, 3"
+        },
+        {
+          "section": "Vegetables",
+          "text": "white onion"
+        },
+        {
+          "section": "Vegetables",
+          "text": "garlic, 3 cloves"
+        }
+      ],
+      "pinnedBy": null,
+      "changedBy": null,
+      "swappedFromDraft": false,
+      "changedAfterLock": false
+    },
+    "friday": {
+      "kind": "out",
+      "dish": "Out",
+      "rule": "Friday is eating out",
+      "protein": null,
+      "tags": [],
+      "pool": null,
+      "ingredients": [],
+      "pinnedBy": null,
+      "changedBy": null,
+      "swappedFromDraft": false,
+      "changedAfterLock": false
+    },
+    "saturday": {
+      "kind": "dish",
+      "dish": "Burgers",
+      "rule": null,
+      "protein": "beef",
+      "tags": [
+        "red-meat"
+      ],
+      "pool": "new",
+      "ingredients": [
+        {
+          "section": "Meat & Fish",
+          "text": "ground beef, 2 lb"
+        },
+        {
+          "section": "Breads",
+          "text": "burger buns"
+        }
+      ],
+      "pinnedBy": null,
+      "changedBy": null,
+      "swappedFromDraft": false,
+      "changedAfterLock": false
+    },
+    "sunday": {
+      "kind": "dish",
+      "dish": "Smoked brisket",
+      "rule": "big cook",
+      "protein": "beef",
+      "tags": [
+        "red-meat",
+        "big-cook"
+      ],
+      "pool": "usual",
+      "ingredients": [],
+      "pinnedBy": null,
+      "changedBy": null,
+      "swappedFromDraft": false,
+      "changedAfterLock": false
+    }
+  },
+  "have": [
+    "tortillas"
+  ],
+  "lockedAt": null,
+  "postedList": null
+}

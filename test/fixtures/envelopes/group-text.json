@@ -1,0 +1,36 @@
+{
+  "jsonrpc": "2.0",
+  "method": "receive",
+  "params": {
+    "subscription": 0,
+    "result": {
+      "envelope": {
+        "source": "aaaaaaaa-0000-4000-8000-000000000001",
+        "sourceNumber": null,
+        "sourceUuid": "aaaaaaaa-0000-4000-8000-000000000001",
+        "sourceName": "Adult One",
+        "sourceDevice": 1,
+        "timestamp": 1790806588504,
+        "serverReceivedTimestamp": 1790806588585,
+        "serverDeliveredTimestamp": 1790806710673,
+        "dataMessage": {
+          "timestamp": 1790806588504,
+          "message": "Tacos Tuesday?",
+          "expiresInSeconds": 0,
+          "isExpirationUpdate": false,
+          "viewOnce": false,
+          "isEndSession": false,
+          "isProfileKeyUpdate": false,
+          "hasProfileKey": true,
+          "groupInfo": {
+            "groupId": "VEVTVC1HUk9VUC1GSVhUVVJFLTAwMDAwMDAwMDAwMDA=",
+            "groupName": "Test group",
+            "revision": 0,
+            "type": "DELIVER"
+          }
+        }
+      },
+      "account": "+15555550123"
+    }
+  }
+}

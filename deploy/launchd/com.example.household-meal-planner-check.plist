@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The watchdog, run by launchd every 60 seconds. It only reads state files, so it is safe to run
+  while the bridge runs. Install it the same way as the bridge's plist, with the same paths and
+  the same environment variables (it needs the alert bot's token if you use Telegram alerts).
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.example.household-meal-planner-check</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/path/to/bun</string>
+    <string>run</string>
+    <string>check-health</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/path/to/household-meal-planner</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HMP_CONFIG</key>
+    <string>/path/to/household-meal-planner/config.toml</string>
+    <key>TELEGRAM_BOT_TOKEN</key>
+    <string>your-telegram-bot-token-here</string>
+  </dict>
+  <key>StartInterval</key>
+  <integer>60</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/path/to/household-meal-planner/state/check-health.log</string>
+  <key>StandardErrorPath</key>
+  <string>/path/to/household-meal-planner/state/check-health.log</string>
+</dict>
+</plist>

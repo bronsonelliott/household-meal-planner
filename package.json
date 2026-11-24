@@ -1,0 +1,21 @@
+{
+  "name": "household-meal-planner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun src/bridge.ts",
+    "doctor": "bun src/doctor.ts",
+    "check-health": "bun src/ops/check-health.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.130.0",
+    "node-html-parser": "^7.0.1"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.9.0"
+  }
+}

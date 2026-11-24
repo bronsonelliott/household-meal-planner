@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The bridge, kept running by launchd on a Mac.
+
+  Install:
+    1. Copy this file to ~/Library/LaunchAgents/com.example.household-meal-planner.plist
+    2. Replace every /path/to/... below with your real paths. launchd does not read your shell
+       profile, so give the full path to bun (run `which bun` to find it).
+    3. launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.example.household-meal-planner.plist
+
+  Secrets: don't put them in this file. WorkingDirectory is the project folder, so Bun reads
+  your .env file from there by itself, the same as when you run `bun start` by hand.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.example.household-meal-planner</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/path/to/bun</string>
+    <string>start</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/path/to/household-meal-planner</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HMP_CONFIG</key>
+    <string>/path/to/household-meal-planner/config.toml</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/path/to/household-meal-planner/state/bridge.log</string>
+  <key>StandardErrorPath</key>
+  <string>/path/to/household-meal-planner/state/bridge.log</string>
+</dict>
+</plist>

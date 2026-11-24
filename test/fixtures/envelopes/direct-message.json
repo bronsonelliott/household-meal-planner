@@ -1,0 +1,30 @@
+{
+  "jsonrpc": "2.0",
+  "method": "receive",
+  "params": {
+    "subscription": 0,
+    "result": {
+      "envelope": {
+        "source": "aaaaaaaa-0000-4000-8000-000000000001",
+        "sourceNumber": null,
+        "sourceUuid": "aaaaaaaa-0000-4000-8000-000000000001",
+        "sourceName": "Adult One",
+        "sourceDevice": 1,
+        "timestamp": 1790806685342,
+        "serverReceivedTimestamp": 1790806685407,
+        "serverDeliveredTimestamp": 1790806710674,
+        "dataMessage": {
+          "timestamp": 1790806685342,
+          "message": "This is message 6.",
+          "expiresInSeconds": 0,
+          "isExpirationUpdate": false,
+          "viewOnce": false,
+          "isEndSession": false,
+          "isProfileKeyUpdate": false,
+          "hasProfileKey": true
+        }
+      },
+      "account": "+15555550123"
+    }
+  }
+}

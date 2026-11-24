@@ -1,0 +1,28 @@
+# The bridge, kept running by systemd.
+#
+# Install (as root; change the paths and user to yours first):
+#   cp deploy/systemd/household-meal-planner*.service deploy/systemd/household-meal-planner-check.timer /etc/systemd/system/
+#   systemctl daemon-reload
+#   systemctl enable --now household-meal-planner.service household-meal-planner-check.timer
+#
+# Change: User, WorkingDirectory, the path to bun (find it with `which bun`), and the EnvironmentFile.
+[Unit]
+Description=Household meal planner (the bridge)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mealplanner
+WorkingDirectory=/opt/household-meal-planner
+# Your secrets: one NAME=value per line, readable only by the service user (chmod 600).
+EnvironmentFile=/opt/household-meal-planner/.env
+Environment=HMP_CONFIG=/opt/household-meal-planner/config.toml
+ExecStart=/home/mealplanner/.bun/bin/bun run start
+Restart=always
+RestartSec=10
+# The bridge shuts down cleanly on SIGTERM; give it a moment before systemd kills it.
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
