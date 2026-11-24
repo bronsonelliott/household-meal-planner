@@ -6,7 +6,7 @@
 //   - each typed profile rule (min, max, fixed, require, forbid); advisory rules are only listed
 //   - the variety caps: usual dishes per week, nights per protein
 //   - vetoes and the repeat window against the log
-//   - for a Friday draft: every night filled, and enough discovery nights (see checkDiscoveryNights)
+//   - for a weekly draft: every night filled, and enough discovery nights (see checkDiscoveryNights)
 //
 // Pins. Pinned nights count toward every total, but only the problems the pins cause are
 // excused. A problem the pins cause comes back in `bent` so the reply can say which rule or cap
@@ -61,7 +61,7 @@ export interface CheckInput {
   // pasta this week"). Named by the rule's exact text, or by a cap label in SET_ASIDE_CAPS.
   // The caller checks that each one cites a real adult message; this function trusts the list.
   setAside?: string[];
-  // Set for a Friday draft: every night must be filled, and the discovery rule applies.
+  // Set for a weekly draft: every night must be filled, and the discovery rule applies.
   draft?: { minDiscoveryNights: number };
   // The nights the agent could still have changed. Default: every night nobody pinned. A
   // revision passes only the nights the model changed, since a reply changes only the nights
@@ -455,7 +455,7 @@ export function checkWeek(input: CheckInput): CheckResult {
     if (hit) perNight(night, `repeat:${night}`, `${capitalize(night)} is ${name}, which was on the menu the week of ${shortDate(hit.weekOf)}`);
   }
 
-  // Friday draft only.
+  // weekly draft only.
   if (input.draft) {
     for (const night of NIGHTS) {
       if (nights[night] === null) violations.push({ key: `open:${night}`, text: `${capitalize(night)} has no dinner`, nights: [night] });
@@ -497,7 +497,7 @@ function sameDish(logged: { dish: string; recipeId?: string }, night: CheckNight
   return isCloseMatch(logged.dish, night.dish);
 }
 
-// The discovery rule: a Friday draft needs at least `minimum` nights whose dish the house has
+// The discovery rule: a weekly draft needs at least `minimum` nights whose dish the house has
 // not had before. A night counts when its dish, of ANY kind (a saved or fetched recipe, a
 // suggested dish, a plain new dish), is not on the usual or also-like lists and was not cooked
 // inside the repeat window, compared by normalized name. A link alone proves nothing: a familiar

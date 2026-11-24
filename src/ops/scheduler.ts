@@ -253,7 +253,7 @@ export class Scheduler {
     const { stateDir, log, say, now } = this.options;
     const marker = awaitingProfileMarkerPath(stateDir, weekOf);
     if (existsSync(marker)) return;
-    log(`friday draft: waiting for the house rules; reminding the household once for the week of ${weekOf}`);
+    log(`weekly draft: waiting for the house rules; reminding the household once for the week of ${weekOf}`);
     if (say) await say(awaitingProfileReminder(), `awaiting-profile-${weekOf}`);
     writeFileAtomically(marker, JSON.stringify({ weekOf, at: new Date(now()).toISOString() }, null, 2) + "\n");
   }
@@ -274,7 +274,7 @@ export class Scheduler {
     const { log, now, worker } = this.options;
     const late = isLateDraft(now(), this.options.schedule);
     this.draftError = null;
-    log(`friday draft: trying for the week of ${weekOf}${late ? " (late)" : ""}`);
+    log(`weekly draft: trying for the week of ${weekOf}${late ? " (late)" : ""}`);
 
     let result: FridayDraftResult;
     try {
@@ -292,7 +292,7 @@ export class Scheduler {
       case "nothing-to-post":
       case "already-posted":
       case "send-unknown":
-        log(`friday draft: ${result.kind} for the week of ${result.weekOf}`);
+        log(`weekly draft: ${result.kind} for the week of ${result.weekOf}`);
         this.nextAttemptAt.delete(weekOf);
         return;
       case "draft-failed":
@@ -320,7 +320,7 @@ export class Scheduler {
     });
     const next = nextDraftAttempt(endedAt, this.options.schedule);
     this.nextAttemptAt.set(weekOf, next);
-    log(`friday draft failed (${errorClass}: ${detail}); next try ${readableTime(next, this.options.schedule.timeZone)}`);
+    log(`weekly draft failed (${errorClass}: ${detail}); next try ${readableTime(next, this.options.schedule.timeZone)}`);
   }
 
   // Past the catch-up deadline: skip the week, and record it for the checker's one alert. The record is
@@ -341,7 +341,7 @@ export class Scheduler {
       });
     }
     const result = await worker.enqueueMissedDraftSkip();
-    log(`friday draft: past ${describeCatchUp(schedule)} for the week of ${weekOf}: ${result.kind}`);
+    log(`weekly draft: past ${describeCatchUp(schedule)} for the week of ${weekOf}: ${result.kind}`);
   }
 }
 

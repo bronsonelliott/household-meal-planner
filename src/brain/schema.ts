@@ -337,7 +337,7 @@ function reply(value: unknown, problems: Problems): BrainReply | null {
 // The two answers the model gives
 // ---------------------------------------------------------------------------------------------
 
-// The answer to a message batch or a Friday draft.
+// The answer to a message batch or a weekly draft.
 export function parseModelOutput(answer: string, sections: readonly string[]): Parsed<ModelOutput> {
   const json = extractJson(answer);
   if (!json.ok) return { ok: false, problems: [json.problem] };

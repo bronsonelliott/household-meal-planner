@@ -98,19 +98,21 @@ function dayList(nights: readonly Night[]): string {
 export function explainCheck(check: RuleCheck, weeknights: readonly Night[]): string {
   const nightsText = (target: string) => (target === "weeknights" ? `weeknights (${dayList(weeknights)})` : DAY_NAMES[target as Night]);
   const dinners = (n: number) => `${n} dinner${n === 1 ? "" : "s"}`;
+  // "a chicken dish" / "an egg dish"; the plural ("chicken dishes") when more than one.
+  const dish = (tag: string, plural = false) => (plural ? `${tag} dishes` : `${/^[aeiou]/i.test(tag) ? "an" : "a"} ${tag} dish`);
   switch (check.kind) {
     case "min":
-      return `every week at least ${dinners(check.count)} must be "${check.tag}" dishes`;
+      return `at least ${dinners(check.count)} a week must be ${dish(check.tag, check.count !== 1)}`;
     case "max":
-      return check.count === 0 ? `no dinner in a week may be a "${check.tag}" dish` : `no more than ${dinners(check.count)} in a week may be "${check.tag}" dishes`;
+      return check.count === 0 ? `no dinner in a week may be ${dish(check.tag)}` : `no more than ${dinners(check.count)} a week may be ${dish(check.tag, check.count !== 1)}`;
     case "fixed":
       if (check.value === "out") return `${DAY_NAMES[check.night]} is always eating out, so I plan nothing for it`;
       if (check.value === "away") return `${DAY_NAMES[check.night]} dinner is somewhere else, so I plan nothing for it`;
-      return `${DAY_NAMES[check.night]} is always a "${check.value}" dish`;
+      return `${DAY_NAMES[check.night]} is always ${dish(check.value)}`;
     case "require":
-      return `every home-cooked dinner on ${nightsText(check.nights)} must be a "${check.tag}" dish`;
+      return `every home-cooked dinner on ${nightsText(check.nights)} must be ${dish(check.tag)}`;
     case "forbid":
-      return `no dinner on ${nightsText(check.nights)} may be a "${check.tag}" dish`;
+      return `no dinner on ${nightsText(check.nights)} may be ${dish(check.tag)}`;
     case "advisory":
       return "nothing to check";
   }

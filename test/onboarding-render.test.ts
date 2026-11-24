@@ -87,8 +87,8 @@ describe("renderReadBack", () => {
     const text = renderReadBack(sample(), options).join("\n");
     expect(text).toContain("1. Friday is eating out. (Alex)");
     expect(text).toContain("I'll check this: Friday is always eating out, so I plan nothing for it.");
-    expect(text).toContain("I'll check this: every home-cooked dinner on weeknights (Monday to Thursday) must be a \"quick\" dish.");
-    expect(text).toContain("I'll check this: every week at least 2 dinners must be \"fish\" dishes.");
+    expect(text).toContain("I'll check this: every home-cooked dinner on weeknights (Monday to Thursday) must be a quick dish.");
+    expect(text).toContain("I'll check this: at least 2 dinners a week must be fish dishes.");
     expect(text).toContain("Lean toward what is in season. (Sam)\n   I'll keep it in mind. I can't check this one, so it won't be enforced.");
   });
 
@@ -133,11 +133,20 @@ describe("renderReadBack", () => {
     for (let i = 0; i < 40; i++) expect(joined).toContain(`- Dish number ${i}: beef`);
   });
 
-  test("explainCheck covers every kind of check", () => {
-    expect(explainCheck({ kind: "max", tag: "beef", count: 1 }, WEEKNIGHTS)).toBe('no more than 1 dinner in a week may be "beef" dishes');
-    expect(explainCheck({ kind: "fixed", night: "sunday", value: "away" }, WEEKNIGHTS)).toContain("somewhere else");
-    expect(explainCheck({ kind: "fixed", night: "tuesday", value: "taco" }, WEEKNIGHTS)).toBe('Tuesday is always a "taco" dish');
-    expect(explainCheck({ kind: "forbid", tag: "fried", nights: "friday" }, WEEKNIGHTS)).toBe('no dinner on Friday may be a "fried" dish');
+  test("explainCheck covers every kind of check, in natural singular and plural", () => {
+    const w = WEEKNIGHTS;
+    expect(explainCheck({ kind: "min", tag: "chicken", count: 1 }, w)).toBe("at least 1 dinner a week must be a chicken dish");
+    expect(explainCheck({ kind: "min", tag: "chicken", count: 2 }, w)).toBe("at least 2 dinners a week must be chicken dishes");
+    expect(explainCheck({ kind: "min", tag: "egg", count: 1 }, w)).toBe("at least 1 dinner a week must be an egg dish");
+    expect(explainCheck({ kind: "max", tag: "red-meat", count: 0 }, w)).toBe("no dinner in a week may be a red-meat dish");
+    expect(explainCheck({ kind: "max", tag: "beef", count: 1 }, w)).toBe("no more than 1 dinner a week may be a beef dish");
+    expect(explainCheck({ kind: "max", tag: "red-meat", count: 2 }, w)).toBe("no more than 2 dinners a week may be red-meat dishes");
+    expect(explainCheck({ kind: "fixed", night: "sunday", value: "away" }, w)).toContain("somewhere else");
+    expect(explainCheck({ kind: "fixed", night: "friday", value: "out" }, w)).toContain("eating out");
+    expect(explainCheck({ kind: "fixed", night: "tuesday", value: "taco" }, w)).toBe("Tuesday is always a taco dish");
+    expect(explainCheck({ kind: "require", tag: "quick", nights: "weeknights" }, w)).toBe("every home-cooked dinner on weeknights (Monday to Thursday) must be a quick dish");
+    expect(explainCheck({ kind: "forbid", tag: "fried", nights: "friday" }, w)).toBe("no dinner on Friday may be a fried dish");
+    expect(explainCheck({ kind: "advisory" }, w)).toBe("nothing to check");
   });
 });
 
@@ -155,6 +164,31 @@ describe("the fixed words", () => {
     expect(text).toContain("Nothing is saved until");
     expect(text).toContain(TOPIC_QUESTIONS.nights);
     expect(welcomeMessage({ botName: "Dinner Bot", memberNames: ["Alex"], mode: "redo" })).toContain("current rules stay in use");
+  });
+
+  test("the interview wording adapts to one, two and three adults", () => {
+    const welcome = (names: string[]) => welcomeMessage({ botName: "Dinner Bot", memberNames: names, mode: "first-run" });
+    const one = welcome(["Alex"]);
+    expect(one).not.toMatch(/either of you|both|any of you|everyone/i);
+    expect(one).toContain("Nothing is saved until you've had a look and said to save it.");
+    const two = welcome(["Alex", "Sam"]);
+    expect(two).toContain("Either of you can answer, and you can both chip in.");
+    expect(two).toContain("until you both have had a look and one of you says to save it");
+    const three = welcome(["Alex", "Sam", "Riley"]);
+    expect(three).toContain("Any of you can answer, and everyone can chip in.");
+    expect(three).toContain("until everyone has had a look and one of you says to save it");
+    expect(welcomeMessage({ botName: "Dinner Bot", memberNames: ["Alex"], mode: "redo" })).not.toMatch(/either of you|both/i);
+  });
+
+  test("the won't-eat and never-again question separates the two and is not 'for each person'", () => {
+    const two = questionFor("wont-eat", 2);
+    expect(two).toBe(TOPIC_QUESTIONS["wont-eat"]);
+    expect(two).toContain("First, who won't eat what?");
+    expect(two).toContain("Second, is there anything I should never suggest again, for anyone?");
+    expect(two).not.toContain("who each one is for");
+    const one = questionFor("wont-eat", 1);
+    expect(one).toContain("is there anything you won't eat?");
+    expect(one).not.toContain("who won't eat what");
   });
 
   test("the clarification quotes both adults", () => {

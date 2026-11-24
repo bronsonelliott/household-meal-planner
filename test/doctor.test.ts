@@ -32,6 +32,30 @@ describe("bun run doctor", () => {
     expect(text).toContain("Nothing was started and nothing was sent.");
   });
 
+  // One adult on Telegram, the smallest setup that shows a platform hint.
+  const ONE_ADULT_TELEGRAM = [
+    "[household]", 'name = "Minimal"',
+    "[[members]]", 'id = "alex"', 'name = "Alex"', 'role = "admin"',
+    "[members.identities]", 'telegram = "100000001"',
+    "[schedule]", 'timezone = "Europe/London"',
+    "[messaging]", 'platform = "telegram"',
+    "[messaging.telegram]", 'chatId = "-1000000000001"',
+  ].join("\n");
+
+  test("the --online hint is shown on the plain run and left out when the online checks follow", () => {
+    const env = { ...household({ config: ONE_ADULT_TELEGRAM }).env, TELEGRAM_BOT_TOKEN: "123:fake-token" };
+    expect(runDoctor(env).lines.join("\n")).toContain("bun run doctor --online");
+    expect(runDoctor(env, { online: true }).lines.join("\n")).not.toContain("doctor --online");
+  });
+
+  test("counts read naturally: 1 member, not 1 members", () => {
+    const env = { ...household({ config: ONE_ADULT_TELEGRAM }).env, TELEGRAM_BOT_TOKEN: "123:fake-token" };
+    const text = runDoctor(env).lines.join("\n");
+    expect(text).toContain("1 member\n");
+    expect(text).not.toContain("1 members");
+    expect(text).toMatch(/\b\d+ usual dishes?\b/);
+  });
+
   test("never prints a secret, even a valid one", () => {
     const report = runDoctor(household().env);
     expect(report.lines.join("\n")).not.toContain(KEY);

@@ -9,7 +9,7 @@ import { appendWeek } from "../src/data/log.ts";
 import type { Operation } from "../src/week/changeset.ts";
 import { loadWeek, saveWeek, weekPath, type WeekFile } from "../src/week/state.ts";
 import { BatchJournal, journalPath } from "../src/week/journal.ts";
-import { postedMarkerPath, sendUnknownMarkerPath } from "../src/week/worker.ts";
+import { keepBrainText, postedMarkerPath, sendUnknownMarkerPath } from "../src/week/worker.ts";
 import { draftedWeek, LEMON_PASTA, night, TACOS } from "./fixtures/week-fixtures.ts";
 import {
   answer,
@@ -403,7 +403,8 @@ describe("locking and the list", () => {
     await deliver(h, worker, lock);
 
     expect(h.brain.fillRequests).toEqual([[{ weekOf: COMING, night: "sunday", dish: "Smoked brisket", pool: "usual", publisherLines: null }]]);
-    expect(h.sent[1]).toBe(`Locking it.\nLocked the week of Oct 5.\n\n${LOCK_LIST}`);
+    // The model's own "Locking it." is dropped: the program's "Locked the week of ..." line says it once.
+    expect(h.sent[1]).toBe(`Locked the week of Oct 5.\n\n${LOCK_LIST}`);
     expect(logText(h)).toContain(LOCKED_LOG_ENTRY + "\n");
 
     const week = comingWeek(h);
@@ -1194,5 +1195,24 @@ describe("skipping a week whose draft never posted", () => {
     const worker = h.makeWorker();
     expect(await worker.enqueueMissedDraftSkip()).toEqual({ kind: "send-unknown", weekOf: COMING });
     expect(comingWeek(h).status).toBe("empty");
+  });
+});
+
+describe("keepBrainText", () => {
+  const text = { kind: "text", text: "  Locked. Next week's dinners are set.  " } as const;
+
+  test("a batch that is only a lock drops the model's own words, so the lock is confirmed once", () => {
+    expect(keepBrainText(text, [{ kind: "lock" }])).toBeNull();
+    expect(keepBrainText(text, [{ kind: "lock" }, { kind: "lock" }])).toBeNull();
+  });
+
+  test("any other batch keeps the model's words, trimmed", () => {
+    expect(keepBrainText(text, [{ kind: "have" }, { kind: "lock" }])).toBe("Locked. Next week's dinners are set.");
+    expect(keepBrainText(text, [])).toBe("Locked. Next week's dinners are set.");
+  });
+
+  test("silence and blank text stay empty", () => {
+    expect(keepBrainText({ kind: "silent", reason: "x" }, [])).toBeNull();
+    expect(keepBrainText({ kind: "text", text: "   " }, [{ kind: "night" }])).toBeNull();
   });
 });

@@ -349,8 +349,31 @@ describe("what the model is given", () => {
     const prompt = fake.calls[0]!.prompt;
     expect(prompt).toContain("- the-kitchn | The Kitchn | link mode | policy: unverified");
     expect(prompt).toContain("- allrecipes | Allrecipes | link mode | policy: blocked");
-    expect(prompt).toContain("- rcp-gnocchi0001 | Sheet pan gnocchi | bookmark | protein: unknown");
+    expect(prompt).toContain("- rcp-gnocchi0001 | Sheet pan gnocchi | saved by you (a link) | protein: unknown");
     expect(prompt).toContain("suggested dish, search The Kitchn: https://www.thekitchn.com/search?q=chicken+tinga");
+  });
+
+  test("the catalog labels each recipe's origin: a link someone saved, or the source it came from", async () => {
+    const recipes = recipeContext([
+      bookmarkRecipe("Sheet pan gnocchi", { id: "rcp-gnocchi0001" }),
+      fetchedRecipe("Beef and Broccoli Stir-Fry", "beef", { id: "rcp-beefbroc0001" }),
+    ]);
+    fake.push(answer(modelJson([], { kind: "silent", reason: "x" })));
+    await makeBrain().handle(messagesRequest([event("m1", SAM, "hello")], brainContext({ recipes })));
+    const prompt = fake.calls[0]!.prompt;
+    expect(prompt).toContain("- rcp-gnocchi0001 | Sheet pan gnocchi | saved by you (a link) | protein: unknown");
+    expect(prompt).toContain("- rcp-beefbroc0001 | Beef and Broccoli Stir-Fry | TheMealDB recipe | protein: beef");
+    expect(prompt).not.toMatch(/Stir-Fry \| (fetched|bookmark)/);
+  });
+
+  test("the weekly draft prompt carries the catalog shortlist when the catalog has recipes", async () => {
+    const recipes = recipeContext([fetchedRecipe("Beef and Broccoli Stir-Fry", "beef", { id: "rcp-beefbroc0001" })]);
+    fake.push(answer(modelJson([draftOp(GOOD_DRAFT)])));
+    await makeBrain().handle(draftRequest(brainContext({ now: FRIDAY_4PM, recipes, comingWeek: weekFile("2026-10-05", "empty", {}) })));
+    const prompt = fake.calls[0]!.prompt;
+    expect(prompt).toContain("Weekly draft for next week");
+    expect(prompt).toContain("# Recipe catalog");
+    expect(prompt).toContain("- rcp-beefbroc0001 | Beef and Broccoli Stir-Fry | TheMealDB recipe | protein: beef");
   });
 
   test("recipes from a removed source are not offered", async () => {
@@ -358,7 +381,7 @@ describe("what the model is given", () => {
     fake.push(answer(modelJson([], { kind: "silent", reason: "x" })));
     await makeBrain().handle(messagesRequest([event("m1", SAM, "hello")], brainContext({ recipes })));
     expect(fake.calls[0]!.prompt).not.toContain("rcp-gnocchi0001");
-    expect(fake.calls[0]!.prompt).toContain("No saved recipes yet.");
+    expect(fake.calls[0]!.prompt).toContain("No recipes in the catalog yet.");
   });
 
   test("the prompt carries the week's shortlist, not the whole export, plus a recipe the message names", async () => {
@@ -371,8 +394,8 @@ describe("what the model is given", () => {
     const prompt = fake.calls[0]!.prompt;
     const listed = prompt.split("\n").filter((line) => line.startsWith("- rcp-") && line.includes("| key ingredients:"));
     expect(listed.length).toBe(151);
-    expect(prompt).toContain("This week's shortlist: 151 of the 401 saved recipes.");
-    expect(prompt).toContain("- rcp-green-chile-enchiladas | Green chile enchiladas | fetched | protein: chicken");
+    expect(prompt).toContain("This week's shortlist: 151 of the 401 recipes in the catalog.");
+    expect(prompt).toContain("- rcp-green-chile-enchiladas | Green chile enchiladas | TheMealDB recipe | protein: chicken");
   });
 
   test("two consecutive calls share nothing: the second request holds no transcript of the first", async () => {
@@ -766,12 +789,18 @@ describe("prompt.md is a template", () => {
     expect(prompt).not.toContain("{{");
   });
 
+  test("the prompt nudges toward catalog and source recipes and tells the model to name a recipe's origin", () => {
+    const prompt = buildSystemPrompt(BRAIN_SETTINGS);
+    expect(prompt).toContain("prefer that at least one of the\nweek's new dishes comes from them");
+    expect(prompt).toContain("Never say \"from your\nsaved recipes\" about a recipe a source supplied.");
+  });
+
   test("the prompt describes the three pools, the discovery rule with its number, and the source dish shape", () => {
     const prompt = buildSystemPrompt({ ...BRAIN_SETTINGS, minDiscoveryNights: 2 });
     expect(prompt).toContain("at least 2 dinner(s) in the draft must be a dish that is not on the usual or");
     expect(prompt).toContain('`{"kind": "catalog", "id": "rcp-1a2b3c4d5e", "tags": ["quick", "mexican"]}`');
     expect(prompt).toContain('`{"kind": "source", "sourceId": "the-kitchn", "name": "Chicken tinga", "protein": "chicken", "tags": ["mexican"]}`');
-    expect(prompt).toContain("the usual dishes, the recipe catalog (saved recipes, chosen by id), and new");
+    expect(prompt).toContain("the usual dishes, the recipe catalog (recipes from the household's sources");
     expect(prompt).toContain("A familiar dish saved or suggested under\na new link is still a familiar dish and does not count.");
     expect(prompt).toContain("Recipe names, ingredient lines, and instructions come from web pages and from chat");
     // The old recipe-export service must not be named anywhere in what the model reads.

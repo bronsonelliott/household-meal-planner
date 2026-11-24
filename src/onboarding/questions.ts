@@ -12,7 +12,7 @@ export const TOPIC_QUESTIONS: Record<TopicId, string> = {
   dinners:
     "Now your go-to dinners: the meals you make again and again. List them the way you'd say them out loud, and add anything that matters about them, like quick, kid-friendly or a big cook.",
   "wont-eat":
-    "Two different things here. Who won't eat what? I'll note it, but it won't ban a dish. And is there anything I should never suggest again? Tell me who each one is for.",
+    "Two different things here. First, who won't eat what? (I'll note it, but it won't rule out a dish.) Second, is there anything I should never suggest again, for anyone?",
   staples:
     'Last one, and you can skip it: what do you always keep in the house, and how is your grocery store laid out, aisle by aisle? Say "skip" and I\'ll use a standard layout.',
 };
@@ -20,8 +20,34 @@ export const TOPIC_QUESTIONS: Record<TopicId, string> = {
 // Said before a question that may not have reached the household the first time.
 export const REASK_PREFIX = "In case my last message didn't reach you:";
 
-export function questionFor(topic: TopicId): string {
+// A household of one adult has nobody else to speak for, so the won't-eat question is shorter.
+const ONE_ADULT_WONT_EAT = "Two different things here. First, is there anything you won't eat? (I'll note it, but it won't rule out a dish.) Second, is there anything I should never suggest again?";
+
+// memberCount is how many adults are set up; the text is the same for two or more.
+export function questionFor(topic: TopicId, memberCount = 2): string {
+  if (topic === "wont-eat" && memberCount === 1) return ONE_ADULT_WONT_EAT;
   return TOPIC_QUESTIONS[topic];
+}
+
+// The few phrases that change with the number of adults: one adult is "you", two are "either of
+// you" and "you both", three or more are "any of you" and "everyone".
+export function householdVoice(memberCount: number): { answerLine: string; saveLine: string } {
+  if (memberCount <= 1) {
+    return {
+      answerLine: 'I\'ll ask five short questions, one at a time. Say "skip" to skip a question.',
+      saveLine: "Nothing is saved until you've had a look and said to save it.",
+    };
+  }
+  if (memberCount === 2) {
+    return {
+      answerLine: 'I\'ll ask five short questions, one at a time. Either of you can answer, and you can both chip in. Say "skip" to skip a question.',
+      saveLine: "Nothing is saved until you both have had a look and one of you says to save it.",
+    };
+  }
+  return {
+    answerLine: 'I\'ll ask five short questions, one at a time. Any of you can answer, and everyone can chip in. Say "skip" to skip a question.',
+    saveLine: "Nothing is saved until everyone has had a look and one of you says to save it.",
+  };
 }
 
 export interface WelcomeInput {
@@ -36,20 +62,14 @@ export function welcomeMessage(input: WelcomeInput): string {
     input.mode === "redo"
       ? `Let's redo your house rules. Your current rules stay in use until you approve new ones. Until we finish, I'll read your messages as answers to this, not as meal requests. Say "cancel setup" to stop.`
       : `Hi ${names}, I'm ${input.botName}. Before I can plan dinners I need to learn your house rules.`;
-  return [
-    intro,
-    "",
-    "I'll ask five short questions, one at a time. Either of you can answer, and you can both chip in. Say \"skip\" to skip a question.",
-    "Nothing is saved until you both have had a look and one of you says to save it.",
-    "",
-    TOPIC_QUESTIONS.nights,
-  ].join("\n");
+  const voice = householdVoice(input.memberNames.length);
+  return [intro, "", voice.answerLine, voice.saveLine, "", questionFor("nights", input.memberNames.length)].join("\n");
 }
 
 // One question to both adults when what they said doesn't fit together, quoting each version.
 export function clarificationMessage(conflict: Conflict): string {
   const names = [...new Set(conflict.versions.map((version) => version.memberName))];
-  const who = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : (names[0] ?? "both of you");
+  const who = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : (names[0] ?? "you");
   return [
     `${who}, I heard two different things about ${conflict.subject}:`,
     ...conflict.versions.map((version) => `- ${version.memberName}: "${version.quote}"`),

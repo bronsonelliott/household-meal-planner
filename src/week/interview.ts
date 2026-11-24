@@ -308,7 +308,7 @@ export class Interview {
       return this.setState(run, "clarification-asked", markConflictAsked(state, step.conflict.id, this.now));
     }
     if (step.kind === "ask") {
-      const outcome = await this.say(run, "question", questionFor(step.topic));
+      const outcome = await this.say(run, "question", questionFor(step.topic, this.deps.settings.members.length));
       const asking: OnboardingState = { ...withPhase(state, "asking", this.now), currentTopic: step.topic, pendingSnapshot: null };
       return this.setState(run, "question-asked", recordAsk(asking, step.topic, wasDelivered(outcome), false, this.now));
     }
@@ -354,7 +354,7 @@ export class Interview {
   // Asks the question being waited on once more, with a short lead-in, and notes how that went.
   private async askAgain(run: Run, state: OnboardingState): Promise<OnboardingState> {
     const topic = state.currentTopic!;
-    const outcome = await this.say(run, "question", `${REASK_PREFIX}\n\n${questionFor(topic)}`);
+    const outcome = await this.say(run, "question", `${REASK_PREFIX}\n\n${questionFor(topic, this.deps.settings.members.length)}`);
     return this.setState(run, "question-reasked", recordAsk(state, topic, wasDelivered(outcome), true, this.now));
   }
 

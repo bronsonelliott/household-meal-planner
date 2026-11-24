@@ -177,6 +177,15 @@ export interface WorkerOptions {
   onFailure?: (error: unknown, what: "messages" | "friday-draft") => void;
 }
 
+// The model's own words for a batch, or null to say nothing extra. When the whole batch is only
+// a lock, the program's "Locked the week of ..." line already says it, so the model's version
+// ("Locked. Next week's dinners are set...") would just say it twice.
+export function keepBrainText(reply: BrainReply, steps: readonly { kind: string }[]): string | null {
+  if (reply.kind !== "text" || reply.text.trim() === "") return null;
+  if (steps.length > 0 && steps.every((step) => step.kind === "lock")) return null;
+  return reply.text.trim();
+}
+
 export type FridayDraftResult =
   | { kind: "posted"; weekOf: string; outcome: "sent" | "partial" }
   // The chat app is keeping the draft for people until they reply (WhatsApp outside its 24-hour
@@ -616,7 +625,7 @@ export class Worker {
         weeksBefore,
         steps,
         fills,
-        brainText: result.reply.kind === "text" && result.reply.text.trim() !== "" ? result.reply.text.trim() : null,
+        brainText: keepBrainText(result.reply, steps),
       };
       // The model's reason for staying silent is the only clue when someone expected a reply.
       if (result.reply.kind === "silent") this.log(`model chose silence for ${id}: ${result.reply.reason.replace(/\s+/g, " ").slice(0, 200)}`);
@@ -959,12 +968,12 @@ export class Worker {
     const values: Partial<Record<Night, NightValue>> = {};
     for (const op of result.changeSet.operations) {
       if (op.sourceMessageId !== triggerId || (op.action !== "swap" && op.action !== "pin")) {
-        this.log(`friday draft: ignored ${op.action} from ${op.sourceMessageId}`);
+        this.log(`weekly draft: ignored ${op.action} from ${op.sourceMessageId}`);
         continue;
       }
       for (const change of op.nights) {
         const resolved = resolveDish(change, context.profile, context.recipes, result.changeSet);
-        if ("problem" in resolved) this.log(`friday draft: ${resolved.problem}`);
+        if ("problem" in resolved) this.log(`weekly draft: ${resolved.problem}`);
         else values[change.night] = resolved.value;
       }
     }
@@ -1003,7 +1012,7 @@ export class Worker {
     // time (harmless) rather than leaving a marker on a week that was never skipped.
     saveWeek(paths.weeksDir, skipWeek(week).week);
     this.writeMarker(postedMarkerPath(paths.stateDir, weekOf), { outcome: "skipped-no-draft", previousStatus: week.status });
-    this.log(`friday draft: no draft by ${describeCatchUp(this.options.schedule)}, so the week of ${weekOf} is skipped`);
+    this.log(`weekly draft: no draft by ${describeCatchUp(this.options.schedule)}, so the week of ${weekOf} is skipped`);
     return { kind: "skipped", weekOf, previousStatus: week.status };
   }
 
@@ -1042,7 +1051,7 @@ export class Worker {
       const detail = "detail" in outcome && outcome.detail ? outcome.detail : "waiting for replies";
       saveWeek(paths.weeksDir, week);
       this.writeMarker(postedMarkerPath(paths.stateDir, weekOf), { outcome: "queued", draftId: id, detail });
-      this.log(`friday draft for the week of ${weekOf} is waiting for replies (${detail}); it has not been delivered to everyone yet`);
+      this.log(`weekly draft for the week of ${weekOf} is waiting for replies (${detail}); it has not been delivered to everyone yet`);
       if (!entry.done) this.journal.append({ type: "done", id });
       return { kind: "queued", weekOf, detail };
     }

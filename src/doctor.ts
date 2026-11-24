@@ -28,7 +28,14 @@ export interface DoctorReport {
 
 type Env = Record<string, string | undefined>;
 
-export function runDoctor(env: Env = process.env): DoctorReport {
+// "1 member", "2 members".
+function count(n: number, noun: string, plural = `${noun}s`): string {
+  return `${n} ${n === 1 ? noun : plural}`;
+}
+
+// With `online` set, the online checks run right after, so the "run doctor --online" hints are left out.
+export function runDoctor(env: Env = process.env, options: { online?: boolean } = {}): DoctorReport {
+  const online = options.online ?? false;
   const problems: string[] = [];
   const notes: string[] = [];
   const warnings: string[] = [];
@@ -51,7 +58,7 @@ export function runDoctor(env: Env = process.env): DoctorReport {
       problems.push(`profile: ${status.message}`);
     } else {
       const profile = status.profile;
-      notes.push(`Profile: ${profilePath} (${profile.usualDishes.length} usual dishes, ${profile.grocerySections.length} grocery sections)`);
+      notes.push(`Profile: ${profilePath} (${count(profile.usualDishes.length, "usual dish", "usual dishes")}, ${count(profile.grocerySections.length, "grocery section")})`);
       warnings.push(...tagCoverageWarnings(profile.rules, [...profile.usualDishes, ...profile.alsoLikeDishes]).map((warning) => `profile: ${warning}`));
     }
     // What the chat interview is up to, if it has been started.
@@ -73,12 +80,12 @@ export function runDoctor(env: Env = process.env): DoctorReport {
   const lines = [
     "All good. Your setup looks ready.",
     ...notes.map((note) => `  ${note}`),
-    `  Household: ${c.household.name}, bot "${c.household.botName}", ${c.members.length} members`,
+    `  Household: ${c.household.name}, bot "${c.household.botName}", ${count(c.members.length, "member")}`,
     `  Chat app: ${c.messaging.platform} (${c.messaging.mode})`,
     `  Draft: ${c.schedule.draftDay} at ${c.schedule.draftTime}, ${c.schedule.timeZone}`,
-    ...(c.messaging.platform === "telegram" ? ["  Telegram: run `bun run doctor --online` to check the token, the group and BotFather's privacy mode."] : []),
-    ...(c.messaging.platform === "whatsapp" ? whatsappNotes(c) : []),
-    ...(c.messaging.platform === "imessage" ? imessageNotes(c) : []),
+    ...(c.messaging.platform === "telegram" && !online ? ["  Telegram: run `bun run doctor --online` to check the token, the group and BotFather's privacy mode."] : []),
+    ...(c.messaging.platform === "whatsapp" ? whatsappNotes(c, online) : []),
+    ...(c.messaging.platform === "imessage" ? imessageNotes(c, online) : []),
     ...providerNotes(c.recipes, env),
     ...(warnings.length > 0 ? ["Worth a look (not blocking):", ...warnings.map((warning) => `  - ${warning}`)] : []),
     "Nothing was started and nothing was sent.",
@@ -99,19 +106,19 @@ function describeInterview(phase: string, mode: string): string {
 }
 
 // What the WhatsApp setup says about itself without asking Meta anything.
-function whatsappNotes(config: AppConfig): string[] {
+function whatsappNotes(config: AppConfig, online: boolean): string[] {
   const { webhook, template } = config.messaging.whatsapp;
   return [
     "  WhatsApp (beta): the webhook listens on " + `${webhook.host}:${webhook.port}${webhook.path}` + " (your tunnel or proxy must forward Meta's calls there).",
     template
       ? `  WhatsApp template: "${template.name}" (${template.language}) is sent to anyone who has not written to the bot in 24 hours.`
       : "  WhatsApp template: none set. Anyone who has not written to the bot in the last 24 hours cannot be sent the plan until they do. See docs/platforms/whatsapp.md.",
-    "  WhatsApp: run `bun run doctor --online` to check the access token and the phone number.",
+    ...(online ? [] : ["  WhatsApp: run `bun run doctor --online` to check the access token and the phone number."]),
   ];
 }
 
 // What the iMessage setup says about itself without asking the server anything.
-function imessageNotes(config: AppConfig): string[] {
+function imessageNotes(config: AppConfig, online: boolean): string[] {
   const { serverUrl, sendMethod } = config.messaging.imessage;
   const lines = [
     `  iMessage (beta): reads and sends through the BlueBubbles server at ${serverUrl}.`,
@@ -123,7 +130,7 @@ function imessageNotes(config: AppConfig): string[] {
   if (process.platform !== "darwin") {
     lines.push("  iMessage: this computer is not a Mac. That is fine as long as it can reach the server's address; BlueBubbles itself must run on a Mac.");
   }
-  lines.push("  iMessage: run `bun run doctor --online` to ping the server and look up the chat.");
+  if (!online) lines.push("  iMessage: run `bun run doctor --online` to ping the server and look up the chat.");
   return lines;
 }
 
@@ -156,7 +163,7 @@ export async function runOnlineChecks(env: Env = process.env, deps: ProviderDeps
 }
 
 if (import.meta.main) {
-  const report = runDoctor();
+  const report = runDoctor(process.env, { online: process.argv.includes("--online") });
   console.log(report.lines.join("\n"));
   let ok = report.ok;
   if (ok && process.argv.includes("--online")) {
