@@ -19,8 +19,10 @@ import { join } from "node:path";
 import { createBrain } from "./brain/index.ts";
 import { createClaudeCaller } from "./brain/claude.ts";
 import { loadConfig } from "./config.ts";
-import { readProfile } from "./data/profile.ts";
+import { readProfileStatus } from "./data/profile.ts";
 import { createAlertNotifier } from "./ops/alerts.ts";
+import { awaitingProfile } from "./onboarding/awaiting.ts";
+import { loadOnboardingState, onboardingStatePath } from "./onboarding/state.ts";
 import { ReplyTracker, touchHeartbeat } from "./ops/heartbeat.ts";
 import { FailurePolicy, Scheduler } from "./ops/scheduler.ts";
 import { RecipeRefresher } from "./recipes/refresh.ts";
@@ -52,8 +54,23 @@ const paths: WorkerPaths = {
   stateDir: stateDir,
 };
 
-// Read once here so a missing or broken profile stops the bridge at start, with the reason.
-const profile = readProfile(paths.profileFiles.profilePath);
+// A profile that exists but cannot be read stops the bridge at start, with the reason (and the
+// file is left alone). No profile at all is fine: the bot interviews the household in the chat
+// and writes one once an adult approves it. Until then it uses the default batching window.
+const profileStatus = readProfileStatus(paths.profileFiles.profilePath);
+if (profileStatus.kind === "error") {
+  console.error(profileStatus.message);
+  process.exit(1);
+}
+const profile = profileStatus.kind === "ready" ? profileStatus.profile : null;
+const DEFAULT_BATCHING_SECONDS = 15;
+
+// A damaged interview file stops the bridge too: guessing could lose the household's answers.
+const interviewFile = loadOnboardingState(onboardingStatePath(stateDir, app.dryRun));
+if (interviewFile.kind === "corrupt") {
+  console.error(interviewFile.message);
+  process.exit(1);
+}
 
 // The messenger starts after the worker exists, because it hands over journaled messages the
 // moment it goes live. Until it is up, anything that needs to send waits for it here.
@@ -113,8 +130,19 @@ const worker: Worker = new Worker({
     void messengerReady.then((messenger) => messenger.markHandled(id));
   },
   now: Date.now,
-  quietWindowMs: profile.thresholds.batchingWindowSeconds * 1000,
+  quietWindowMs: (profile?.thresholds.batchingWindowSeconds ?? DEFAULT_BATCHING_SECONDS) * 1000,
   schedule: app.schedule,
+  interview: {
+    botName: app.household.botName,
+    members: app.members.map((member) => ({ id: member.id, name: member.name })),
+    weeknights: app.planning.weeknights,
+    minDiscoveryNights: app.planning.minDiscoveryNights,
+    dryRun: app.dryRun,
+  },
+  // The first profile was just saved: the scheduler catches up on the draft (or says when it comes).
+  onProfileSaved: (commitId, mode) => {
+    if (mode === "first-run") void scheduler.profileSaved(commitId);
+  },
   timers: DEFAULT_TIMERS,
   log,
   onFailure: (error, what) => {
@@ -123,10 +151,21 @@ const worker: Worker = new Worker({
   },
 });
 
-const scheduler: Scheduler = new Scheduler({ stateDir: stateDir, worker, schedule: app.schedule, now: Date.now, log });
+const scheduler: Scheduler = new Scheduler({
+  stateDir: stateDir,
+  worker,
+  schedule: app.schedule,
+  now: Date.now,
+  log,
+  // No profile yet while the first interview runs: the draft waits, with one reminder a week.
+  awaitingProfile: () => awaitingProfile({ stateDir, profilePath: paths.profileFiles.profilePath, dryRun: app.dryRun }),
+  say: async (text, key) => (await messengerReady).sendToConversation(text, key),
+});
 
-// Finish anything the journal shows as unfinished before new messages are handled.
+// Finish anything the journal shows as unfinished before new messages are handled, then, with no
+// profile, begin the interview (the welcome goes out once; a restart does not repeat it).
 void worker.recover();
+void worker.startOnboarding();
 
 const messenger = await startMessengerOrExit(adapter, {
   mode: app.messaging.mode,

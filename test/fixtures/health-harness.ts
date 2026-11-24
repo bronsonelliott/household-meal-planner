@@ -11,7 +11,7 @@ export interface CheckerRun extends HealthReport {
 }
 
 // `results` are what the recording notifier answers with, in order (then "sent").
-export async function runChecker(options: { stateDir: string; nowMs: number; schedule?: ScheduleConfig; results?: AlertResult[] }): Promise<CheckerRun> {
+export async function runChecker(options: { stateDir: string; nowMs: number; schedule?: ScheduleConfig; results?: AlertResult[]; dataDir?: string; dryRun?: boolean }): Promise<CheckerRun> {
   const messages: string[] = [];
   const results = [...(options.results ?? [])];
   const notifier: AlertNotifier = {
@@ -22,7 +22,7 @@ export async function runChecker(options: { stateDir: string; nowMs: number; sch
     },
   };
   const report = await runHealthCheck({
-    config: { schedule: options.schedule ?? CHICAGO_SCHEDULE, paths: { dataDir: "unused", stateDir: options.stateDir } },
+    config: { schedule: options.schedule ?? CHICAGO_SCHEDULE, paths: { dataDir: options.dataDir ?? "unused", stateDir: options.stateDir }, dryRun: options.dryRun },
     nowMs: options.nowMs,
     notifier,
     log: () => {},

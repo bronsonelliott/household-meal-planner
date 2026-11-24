@@ -13,6 +13,7 @@
 import { DRY_RUN_DETAIL } from "../dry-run.ts";
 import type { SendOutcome } from "../types.ts";
 import { describeAnswer, type ApiAnswer } from "./client.ts";
+import { stripGuidPrefix } from "./normalize.ts";
 
 const AUTH_STEP = "Check the BlueBubbles server password: it must match the environment variable named by messaging.imessage.passwordEnv. Then restart the bridge.";
 
@@ -21,7 +22,7 @@ export function sortSendAnswer(answer: ApiAnswer, now: () => number = Date.now):
     case "ok": {
       // A 200 with no message guid is not the answer we know how to read; do not claim it was sent.
       if (typeof answer.body?.data?.guid !== "string") return { kind: "unknown", detail: "the BlueBubbles server answered ok but gave no message guid" };
-      return { kind: "sent", timestamp: now() };
+      return { kind: "sent", timestamp: now(), nativeId: stripGuidPrefix(answer.body.data.guid) };
     }
 
     case "timeout":

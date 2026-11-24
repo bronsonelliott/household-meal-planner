@@ -36,7 +36,8 @@ import type { OnboardingExtractOutcome, OnboardingExtractRequest } from "../onbo
 import type { IngredientFill, IngredientRequest } from "../week/changeset.ts";
 import type { ScheduleConfig } from "../config.ts";
 import { NIGHTS } from "../data/profile.ts";
-import { addDays, describeCatchUp, instantOfLocalTime, localDate, localTime, mondayOf } from "../week/state.ts";
+import { awaitingProfileReminder } from "../onboarding/questions.ts";
+import { addDays, describeCatchUp, describeMinutes, instantOfLocalTime, localDate, localTime, mondayOf } from "../week/state.ts";
 import {
   postedMarkerPath,
   sendUnknownMarkerPath,
@@ -116,6 +117,10 @@ export function nextDraftAttempt(failedAtMs: number, schedule: ScheduleConfig): 
   return failedAtMs + 30 * MINUTE;
 }
 
+function capitalizeWord(word: string): string {
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
+
 function readableTime(nowMs: number, timeZone: string): string {
   return new Intl.DateTimeFormat("en-US", { timeZone, weekday: "short", hour: "numeric", minute: "2-digit" }).format(new Date(nowMs));
 }
@@ -158,12 +163,23 @@ export interface ScheduledWorker {
   enqueueRollover(): Promise<void>;
 }
 
+// While the first-run interview has not produced a profile there is nothing to draft from. The
+// scheduler then keeps its hands off the week: one reminder per due week, and no draft tries, no
+// failure records and no skipped-week alerts.
+export function awaitingProfileMarkerPath(stateDir: string, weekOf: string): string {
+  return join(stateDir, `awaiting-profile-${weekOf}.json`);
+}
+
 export interface SchedulerOptions {
   stateDir: string;
   worker: ScheduledWorker;
   schedule: ScheduleConfig;
   now: () => number;
   log: (line: string) => void;
+  // True while the first-run interview is verified to be in progress (src/onboarding/awaiting.ts).
+  awaitingProfile?: () => boolean;
+  // Says something to the household. `key` makes it safe to repeat after a restart.
+  say?: (text: string, key: string) => Promise<unknown>;
 }
 
 export class Scheduler {
@@ -215,12 +231,43 @@ export class Scheduler {
     // Posted (or counted as posted), or maybe on the phones already: nothing more to do.
     if (existsSync(postedMarkerPath(stateDir, weekOf)) || existsSync(sendUnknownMarkerPath(stateDir, weekOf))) return;
 
+    if (this.options.awaitingProfile?.()) {
+      await this.remindAwaitingProfile(weekOf);
+      return;
+    }
+    // The household was still setting up when this week's window closed. That is not a missed
+    // draft: nothing is skipped and nobody is alerted. (profileSaved says when the next draft is.)
+    if (phase === "past-deadline" && existsSync(awaitingProfileMarkerPath(stateDir, weekOf))) return;
+
     if (phase === "past-deadline") {
       await this.skipMissedWeek(weekOf);
       return;
     }
     if (now() < (this.nextAttemptAt.get(weekOf) ?? 0)) return;
     await this.tryDraft(weekOf);
+  }
+
+  // One reminder per due week. The send comes first, under a key the sender remembers, then the
+  // marker: a crash in between repeats the send at most once, and the sender then skips it.
+  private async remindAwaitingProfile(weekOf: string): Promise<void> {
+    const { stateDir, log, say, now } = this.options;
+    const marker = awaitingProfileMarkerPath(stateDir, weekOf);
+    if (existsSync(marker)) return;
+    log(`friday draft: waiting for the house rules; reminding the household once for the week of ${weekOf}`);
+    if (say) await say(awaitingProfileReminder(), `awaiting-profile-${weekOf}`);
+    writeFileAtomically(marker, JSON.stringify({ weekOf, at: new Date(now()).toISOString() }, null, 2) + "\n");
+  }
+
+  // The interview just saved the first profile. If the draft window is open, draft now (the
+  // catch-up); if not, say when the next draft is. Old weeks are never drafted after the fact.
+  async profileSaved(commitId: string): Promise<void> {
+    const { now, schedule, say } = this.options;
+    if (draftPhase(now(), schedule) === "drafting") {
+      await this.tick();
+      return;
+    }
+    const next = `${capitalizeWord(schedule.draftDay)} at ${describeMinutes(schedule.draftMinutes)}`;
+    if (say) await say(`Your house rules are saved. The next dinner draft is ${next}.`, `profile-saved-${commitId}`);
   }
 
   private async tryDraft(weekOf: string): Promise<void> {

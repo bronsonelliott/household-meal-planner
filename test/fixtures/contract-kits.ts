@@ -144,7 +144,7 @@ export const fakeKit: KitFactory = () => {
       return adapter;
     },
     async sends() {
-      return adapters.flatMap((adapter) => adapter.sends);
+      return adapters.flatMap((adapter) => adapter.sends.map(({ scope, memberId, text }) => ({ scope, memberId, text })));
     },
     async acks() {
       return adapters.flatMap((adapter) => adapter.acks.map((ack) => ({ kind: ack.kind })));

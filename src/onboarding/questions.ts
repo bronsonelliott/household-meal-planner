@@ -31,7 +31,7 @@ export function welcomeMessage(input: WelcomeInput): string {
   const names = input.memberNames.length > 1 ? `${input.memberNames.slice(0, -1).join(", ")} and ${input.memberNames[input.memberNames.length - 1]}` : (input.memberNames[0] ?? "you");
   const intro =
     input.mode === "redo"
-      ? `Let's redo your house rules. Your current rules stay in use until you approve new ones.`
+      ? `Let's redo your house rules. Your current rules stay in use until you approve new ones. Until we finish, I'll read your messages as answers to this, not as meal requests. Say "cancel setup" to stop.`
       : `Hi ${names}, I'm ${input.botName}. Before I can plan dinners I need to learn your house rules.`;
   return [
     intro,
@@ -69,11 +69,33 @@ export const CANCELLED_MESSAGE = 'Okay, I\'ve stopped the setup. Say "set up hou
 
 export const SAMPLE_INTRO = "Here's the sample set of house rules. It's only a starting point, and nothing is saved until you approve it.";
 
-// What the bot says after the profile has been saved.
-export function savedMessage(mode: Mode): string {
+// What the bot says after the profile has been saved. A practice run (dry run) saves nothing.
+export function savedMessage(mode: Mode, practice = false): string {
+  if (practice) return "That's the end of the practice run. Nothing was saved, because the bot is in dry-run mode. Start it for real and I'll ask again.";
   return mode === "first-run"
     ? "Saved. Those are your house rules, and I'll use them for every draft. Since this was your first set, there's nothing to undo. To change something, just tell me, or edit data/profile.md."
     : 'Saved. The new rules are in use. Say "undo" within 30 minutes to go back to your old ones.';
 }
 
 export const EXTERNAL_EDIT_MESSAGE = "The profile file was changed by hand while I was saving, so I left it alone. I'll read back my version again so you can check it.";
+
+export const NOTHING_TO_SAVE = "There's nothing to save yet, because I still have questions.";
+
+export const NO_SETUP_RUNNING = 'There is no setup running. Say "set up house rules" to start one.';
+
+export const SETUP_RESUMED = "Picking up where we left off.";
+
+export const SETUP_ALREADY_RUNNING = "We're already in the middle of setting up your house rules.";
+
+export const PROFILE_UNREADABLE =
+  "I can't start the setup, because the house rules file exists but I can't read it. Fix it (bun run doctor says what is wrong) or move it aside, then try again.";
+
+// What a message gets while there is no profile and no setup running.
+export const AWAITING_PROFILE_LINE = 'I can\'t plan dinners until I have your house rules. Say "set up house rules" and I\'ll ask a few questions.';
+
+export const FIRST_RUN_PROFILE_APPEARED = "A house rules file has appeared by hand, so I've closed the setup and will use that file.";
+
+// One line per week while the first setup is not done and a draft would have been due.
+export function awaitingProfileReminder(): string {
+  return 'The weekly dinner draft is waiting for your house rules. Say "set up house rules" (or answer my last question) and I\'ll catch up.';
+}

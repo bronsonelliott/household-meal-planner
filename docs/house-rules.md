@@ -5,6 +5,10 @@ live in `data/profile.md`, under the `## Rules` heading, and you can write them 
 any code. This page is a menu of 30 ready-to-copy rules, grouped by the kind of household that
 tends to want them. Pick the ones that sound like you, paste them in, and change the words.
 
+Don't want to write rules by hand? Start the bot with no profile and it will interview you in the
+chat and write them down for you; you can still use this page to choose ideas to tell it, or to
+edit the result afterwards.
+
 A few things to know before you start:
 
 - **A rule is a plain sentence.** The sentence is for people. The part in square brackets at the

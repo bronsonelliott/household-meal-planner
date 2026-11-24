@@ -5,19 +5,20 @@ import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runDoctor } from "../src/doctor.ts";
+import { newOnboardingState, onboardingStatePath, saveOnboardingState } from "../src/onboarding/state.ts";
 import { exampleConfigText } from "./fixtures/config-fixtures.ts";
 
 const EXAMPLE_PROFILE = join(import.meta.dir, "..", "data.example", "profile.md");
 const KEY = "sk-ant-doctor-test-DO-NOT-PRINT";
 
 // A folder with config.toml and data/profile.md, the way a household would set it up.
-function household(options: { config?: string; profile?: string | null } = {}): { env: Record<string, string> } {
+function household(options: { config?: string; profile?: string | null } = {}): { env: Record<string, string>; dir: string } {
   const dir = mkdtempSync(join(tmpdir(), "doctor-test-"));
   writeFileSync(join(dir, "config.toml"), options.config ?? exampleConfigText());
   mkdirSync(join(dir, "data"));
   if (options.profile === undefined) copyFileSync(EXAMPLE_PROFILE, join(dir, "data", "profile.md"));
   else if (options.profile !== null) writeFileSync(join(dir, "data", "profile.md"), options.profile);
-  return { env: { HMP_CONFIG: join(dir, "config.toml"), ANTHROPIC_API_KEY: KEY } };
+  return { env: { HMP_CONFIG: join(dir, "config.toml"), ANTHROPIC_API_KEY: KEY }, dir };
 }
 
 describe("bun run doctor", () => {
@@ -52,13 +53,42 @@ describe("bun run doctor", () => {
   });
 
   test("a missing profile, or a profile with a bad grocery section, is reported", () => {
-    expect(runDoctor(household({ profile: null }).env).problems[0]).toContain("there is no profile.md");
-
     const bad = "## Grocery Sections\n- Produce\n";
     const text = "# P\n## Rules\n## Usual Dishes\n### Soup\n- Protein: none\n- Dairy: cream\n## Also-Like Dishes\n## Staples\n## Dislikes\n## Vetoes\n## Lock Words\n- lock it\n## Thresholds\n";
     const report = runDoctor(household({ profile: bad + text }).env);
     expect(report.ok).toBe(false);
     expect(report.problems.join("\n")).toContain("profile:");
+  });
+
+  test("a missing profile is not a problem: the bot will interview the household in the chat", () => {
+    const report = runDoctor(household({ profile: null }).env);
+    expect(report.ok).toBe(true);
+    expect(report.problems).toEqual([]);
+    expect(report.lines.join("\n")).toContain("Ready for chat setup: the bot will interview you in the chat when it starts");
+  });
+
+  test("a whitespace-only profile counts as missing; the interview's status is shown when a state file exists", () => {
+    const { env, dir } = household({ profile: "   \n" });
+    expect(runDoctor(env).lines.join("\n")).toContain("Ready for chat setup");
+    expect(runDoctor(env).lines.join("\n")).not.toContain("House-rules interview");
+
+    const stateDir = join(dir, "state");
+    mkdirSync(stateDir, { recursive: true });
+    const state = { ...newOnboardingState("first-run", "none", new Date("2026-03-02T18:00:00Z")), phase: "cancelled" as const };
+    saveOnboardingState(onboardingStatePath(stateDir, false), state);
+    const text = runDoctor(env).lines.join("\n");
+    expect(text).toContain("House-rules interview: the first setup was cancelled");
+    expect(text).toContain('"set up house rules"');
+  });
+
+  test("an unreadable interview file is a problem, and a profile with text that does not parse still is too", () => {
+    const { env, dir } = household({ profile: "" });
+    mkdirSync(join(dir, "state"), { recursive: true });
+    writeFileSync(join(dir, "state", "onboarding.json"), "{ not json");
+    const report = runDoctor(env);
+    expect(report.ok).toBe(false);
+    expect(report.problems.join("\n")).toContain("interview:");
+    expect(runDoctor(household({ profile: "this is not a profile" }).env).ok).toBe(false);
   });
 
   test("a missing secret is named by its variable only", () => {

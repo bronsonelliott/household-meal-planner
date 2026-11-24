@@ -18,7 +18,16 @@ eating out. Weeknights have to be quick because of practice. Red meat no more th
 Sunday is the night for the long cook. Somebody won't touch mushrooms. That is what makes your week
 yours, and it is the heart of this bot.
 
-You write them down once, in plain sentences, in a file called `profile.md`:
+You don't have to write them yourself. The first time the bot starts and finds no profile, it
+interviews the adults in your own chat. It asks five short questions, one at a time, in plain
+words: which nights are fixed, how you like to eat, your go-to dinners, who won't eat what, and
+(if you like) how your store is laid out. Either of you can answer, and you can both chip in. Then
+it reads your rules back to you, in everyday language, with the checks it will run. **Nothing is
+saved until one of you says "save it".** Prefer typing it yourself, or want to see an example
+first? Say "use the sample", or copy the sample file (the quick start shows how).
+
+Whichever way it got there, the rules end up written down once, in plain sentences, in a file
+called `profile.md`:
 
 ```
 ## Rules
@@ -263,17 +272,20 @@ TELEGRAM_BOT_TOKEN=123456789:your-real-bot-token-here
 whenever you run a command in the project folder, so there is nothing to "load". The file stays on
 your computer; `.gitignore` keeps it out of git.
 
-**5. Make your profile**, which holds your rules and usual dishes:
+**5. Your profile, which holds your rules and usual dishes.** Nothing to do: on first start the bot
+interviews you in the chat and writes `data/profile.md` once you approve it. (`bun run doctor` will
+say "Ready for chat setup" until then.)
+
+If you would rather write it by hand, copy the sample and edit it:
 
 ```
 mkdir -p data
 cp data.example/profile.md data/profile.md
 ```
 
-You can leave the example profile as it is for your first run; `bun run doctor` (next step) checks
-it. When you are ready to make it yours, see [Your household profile](#your-household-profile) for
-the format and "Your house rules are the brain" above for how rules work. Whatever you change, keep
-the `##` headings exactly as they are: the bot finds each part by its heading.
+See [Your household profile](#your-household-profile) for the format and "Your house rules are the
+brain" above for how rules work. Whatever you change, keep the `##` headings exactly as they are:
+the bot finds each part by its heading.
 
 **6. Check your files and settings.** This sends nothing and starts nothing:
 
@@ -341,8 +353,12 @@ type other commands. The first lines look like this (each starts with the date a
 
 If you see an error instead of the "connected" line, run `bun run doctor --online` (in the second
 window, after stopping the bot) and read what it says. If all is well, write to the group as one of
-the adults, for example "hello" or "what's for dinner Tuesday?". The terminal shows lines starting
-"DRY RUN" for the replies it would have sent; nothing reaches the group. Those lines include the
+the adults. If you made a profile in step 5, try "what's for dinner Tuesday?". If you didn't, the
+bot starts the house-rules interview in practice mode: its welcome and questions appear as "DRY RUN"
+lines in the terminal, and you can answer them in the group to see how it goes. A practice interview
+keeps its own notes, so it does not use up the real welcome, and nothing is written to `data/` even
+when you say "save it". The terminal shows lines starting "DRY RUN" for the replies it would have
+sent; nothing reaches the group. Those lines include the
 message text, and they are also saved in `state/dry-run-sends.jsonl`. Stop the bot by pressing
 Ctrl-C (hold the Control key and press C) in the terminal where it is running.
 
@@ -353,9 +369,11 @@ bun start
 ```
 
 The same lines appear, without "DRY RUN". The bot keeps running, and the terminal stays busy,
-until you press Ctrl-C. **It does not post anything when it starts.** It posts the weekly draft on
-draft day and time (Friday 4 PM by default), and it answers when Alex or Sam (the adults you
-listed) write to it.
+until you press Ctrl-C. **It does not post anything when it starts, with one exception: if there is
+no profile yet, it posts a welcome and its first interview question, once.** After that it posts the
+weekly draft on draft day and time (Friday 4 PM by default), and it answers when Alex or Sam (the
+adults you listed) write to it. While the house rules are still being set up, it holds the weekly
+draft and reminds you once a week.
 
 To keep it running after you close the terminal, and to start it again after a reboot, use your
 system's service manager: [docs/deployment.md](docs/deployment.md).

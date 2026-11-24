@@ -243,6 +243,9 @@ describe("addressing the bot", () => {
     api.addMessage({ guid: "R3", text: "p-prefixed", replyTo: `p:0/${botGuid}`, at: Date.now() + 2 });
     await eventually(() => received.length === 3);
     expect(received.map((m) => [m.nativeId, m.repliesToBot])).toEqual([["R1", true], ["R2", false], ["R3", true]]);
+    // The replied-to message is named the way a send names it, prefix or not, so a read-back can be matched.
+    expect(received.map((m) => m.replyToNativeId)).toEqual(["OUT-1", "SOMEONE-ELSES", "OUT-1"]);
+    expect((outcome as { nativeId?: string }).nativeId).toBe("OUT-1");
   });
 
   test("a message the poll sees from the bot's own account is learned as the bot's (a send's first guid can be temporary)", async () => {
@@ -336,7 +339,7 @@ describe("sending", () => {
 
   test("a 200 that carries no message guid is unknown, never claimed as sent", () => {
     expect(sortSendAnswer({ kind: "ok", body: { status: 200, data: {} } }).kind).toBe("unknown");
-    expect(sortSendAnswer({ kind: "ok", body: { status: 200, data: { guid: "G" } } }, () => 42)).toEqual({ kind: "sent", timestamp: 42 });
+    expect(sortSendAnswer({ kind: "ok", body: { status: 200, data: { guid: "G" } } }, () => 42)).toEqual({ kind: "sent", timestamp: 42, nativeId: "G" });
   });
 });
 

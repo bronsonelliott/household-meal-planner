@@ -13,6 +13,8 @@ export interface FakeSend {
   scope: "conversation" | "member";
   memberId: string | null;
   text: string;
+  // The native ID the fake gave the message (when the outcome was the default "sent").
+  nativeId?: string;
 }
 
 export interface FakeAck {
@@ -27,6 +29,9 @@ export interface FakeAdapterOptions {
   maxMessageChars?: number;
   reactions?: boolean;
 }
+
+// One counter for every fake adapter in the process, so IDs stay unique across a simulated restart.
+let nextSentId = 1;
 
 export const FAKE_CONVERSATION_ID = "fake-household-group";
 
@@ -99,19 +104,21 @@ export class FakeAdapter implements MessagingAdapter {
   }
 
   async sendToConversation(text: string): Promise<SendOutcome> {
-    this.sends.push({ scope: "conversation", memberId: null, text });
-    return this.nextOutcome();
+    return this.record({ scope: "conversation", memberId: null, text });
   }
 
   async sendToMember(memberId: string, text: string): Promise<SendOutcome> {
-    this.sends.push({ scope: "member", memberId, text });
-    return this.nextOutcome();
+    return this.record({ scope: "member", memberId, text });
   }
 
-  private nextOutcome(): SendOutcome {
+  private record(send: FakeSend): SendOutcome {
+    this.sends.push(send);
     const scripted = this.script.shift() ?? this.scriptRepeat;
     if (scripted) return scripted;
-    return { kind: "sent", timestamp: Date.now() };
+    // Like a real platform, the fake gives every message it posts an ID, so replies to it can be tested.
+    const nativeId = `sent-${nextSentId++}`;
+    send.nativeId = nativeId;
+    return { kind: "sent", timestamp: Date.now(), nativeId };
   }
 
   async acknowledge(ref: MessageRef, kind: AckKind): Promise<void> {

@@ -13,7 +13,8 @@ import { diagnoseIMessage } from "./messaging/imessage/diagnose.ts";
 import { imessageAdapterConfig } from "./messaging/imessage/settings.ts";
 import { diagnoseWhatsApp } from "./messaging/whatsapp/diagnose.ts";
 import { whatsappAdapterConfig } from "./messaging/whatsapp/settings.ts";
-import { ProfileError, readProfile } from "./data/profile.ts";
+import { ProfileError, readProfileStatus } from "./data/profile.ts";
+import { loadOnboardingState, onboardingStatePath } from "./onboarding/state.ts";
 import { tagCoverageWarnings } from "./onboarding/validate.ts";
 import { diagnoseProviders, providerNotes } from "./recipes/providers/diagnose.ts";
 import type { ProviderDeps } from "./recipes/providers/index.ts";
@@ -43,17 +44,20 @@ export function runDoctor(env: Env = process.env): DoctorReport {
 
   if (config) {
     const profilePath = join(config.paths.dataDir, "profile.md");
-    if (!existsSync(profilePath)) {
-      problems.push(`profile: there is no profile.md at ${profilePath}. Copy data.example/profile.md there and edit it.`);
+    const status = readProfileStatus(profilePath);
+    if (status.kind === "setup-needed") {
+      notes.push("Profile: Ready for chat setup: the bot will interview you in the chat when it starts (there is no profile.md yet).");
+    } else if (status.kind === "error") {
+      problems.push(`profile: ${status.message}`);
     } else {
-      try {
-        const profile = readProfile(profilePath);
-        notes.push(`Profile: ${profilePath} (${profile.usualDishes.length} usual dishes, ${profile.grocerySections.length} grocery sections)`);
-        warnings.push(...tagCoverageWarnings(profile.rules, [...profile.usualDishes, ...profile.alsoLikeDishes]).map((warning) => `profile: ${warning}`));
-      } catch (error) {
-        problems.push(`profile: ${error instanceof ProfileError ? error.message : (error as Error).message}`);
-      }
+      const profile = status.profile;
+      notes.push(`Profile: ${profilePath} (${profile.usualDishes.length} usual dishes, ${profile.grocerySections.length} grocery sections)`);
+      warnings.push(...tagCoverageWarnings(profile.rules, [...profile.usualDishes, ...profile.alsoLikeDishes]).map((warning) => `profile: ${warning}`));
     }
+    // What the chat interview is up to, if it has been started.
+    const interview = loadOnboardingState(onboardingStatePath(config.paths.stateDir, config.dryRun));
+    if (interview.kind === "corrupt") problems.push(`interview: ${interview.message}`);
+    else if (interview.kind === "ok") notes.push(`House-rules interview: ${describeInterview(interview.state.phase, interview.state.mode)}`);
     problems.push(...missingSecrets(config, env).map((problem) => `secrets: ${problem}`));
   }
 
@@ -80,6 +84,18 @@ export function runDoctor(env: Env = process.env): DoctorReport {
     "Nothing was started and nothing was sent.",
   ];
   return { ok: true, problems, warnings, lines };
+}
+
+function describeInterview(phase: string, mode: string): string {
+  const what = mode === "redo" ? "a redo of your house rules" : "the first setup";
+  switch (phase) {
+    case "done":
+      return `${what} finished.`;
+    case "cancelled":
+      return `${what} was cancelled. Say "set up house rules" in the chat to pick it up again.`;
+    default:
+      return `${what} is in progress (${phase}). It continues in the chat.`;
+  }
 }
 
 // What the WhatsApp setup says about itself without asking Meta anything.

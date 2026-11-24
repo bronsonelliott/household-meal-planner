@@ -16,7 +16,11 @@ import { describeAnswer } from "./client.ts";
 export function sortSendAnswer(answer: ApiAnswer, now: () => number = Date.now): SendOutcome {
   switch (answer.kind) {
     case "ok":
-      return { kind: "sent", timestamp: typeof answer.result?.date === "number" ? answer.result.date * 1000 : now() };
+      return {
+        kind: "sent",
+        timestamp: typeof answer.result?.date === "number" ? answer.result.date * 1000 : now(),
+        ...(typeof answer.result?.message_id === "number" ? { nativeId: String(answer.result.message_id) } : {}),
+      };
 
     case "timeout":
       return { kind: "unknown", detail: "Telegram did not answer before the timeout" };

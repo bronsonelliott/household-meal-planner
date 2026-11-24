@@ -107,6 +107,7 @@ export function normalizeUpdate(update: any, bot: BotIdentity, logicalChatId: (c
       hasAttachments: ATTACHMENT_KEYS.some((key) => message[key] !== undefined),
       mentionsBot,
       repliesToBot: message.reply_to_message?.from?.id === bot.id,
+      ...(typeof message.reply_to_message?.message_id === "number" ? { replyToNativeId: String(message.reply_to_message.message_id) } : {}),
       timestamp: message.date * 1000,
     },
   };

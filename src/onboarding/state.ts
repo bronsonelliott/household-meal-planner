@@ -30,6 +30,11 @@ export type Phase = (typeof PHASES)[number];
 
 export type Mode = "first-run" | "redo";
 
+// The interview is under way (messages from the adults are answers, not meal requests).
+export function isActivePhase(phase: Phase): boolean {
+  return phase !== "done" && phase !== "cancelled";
+}
+
 export const FACT_KINDS = ["rule", "dish", "dislike", "veto", "staple", "section", "note"] as const;
 export type FactKind = (typeof FACT_KINDS)[number];
 
@@ -96,6 +101,9 @@ export interface ReadBackRecord {
   // One entry per adult: did they get the whole read-back? "queued" means the chat app is holding
   // it until they write to the bot; that does not count as delivered.
   deliveries: Record<string, DeliveryStatus>;
+  // The chat app's own IDs of the messages this read-back became, so "save it" can be tied to a
+  // reply to it. `memberId` is the adult whose private chat holds it, or null for the shared group.
+  nativeIds: Array<{ memberId: string | null; nativeId: string }>;
 }
 
 // The confirm question: "Save these rules: ...?" The next "save it" approves exactly this snapshot.
@@ -604,7 +612,7 @@ export function proposalFingerprint(proposal: Proposal): string {
 export function recordReadBack(state: OnboardingState, proposal: Proposal, memberIds: string[], chunkCount: number, now: Date): OnboardingState {
   const deliveries: Record<string, DeliveryStatus> = {};
   for (const id of memberIds) deliveries[id] = "pending";
-  const record: ReadBackRecord = { revision: state.revision, chunkCount, sentAt: now.toISOString(), proposal, deliveries };
+  const record: ReadBackRecord = { revision: state.revision, chunkCount, sentAt: now.toISOString(), proposal, deliveries, nativeIds: [] };
   return touch({ ...state, lastReadBack: record, phase: "proposed", pendingSnapshot: null }, now);
 }
 
@@ -613,6 +621,21 @@ export function recordDelivery(state: OnboardingState, revision: number, memberI
   const record = state.lastReadBack;
   if (!record || record.revision !== revision) return state;
   return touch({ ...state, lastReadBack: { ...record, deliveries: { ...record.deliveries, [memberId]: status } } }, now);
+}
+
+// Notes the chat app's IDs for the messages the latest read-back became.
+export function recordReadBackIds(state: OnboardingState, revision: number, ids: ReadBackRecord["nativeIds"], now: Date): OnboardingState {
+  const record = state.lastReadBack;
+  if (!record || record.revision !== revision) return state;
+  return touch({ ...state, lastReadBack: { ...record, nativeIds: ids } }, now);
+}
+
+// Is this message a direct reply to one of the latest read-back's messages, in a chat this adult
+// can see? (In an adult's private chat only the copy sent there counts; in the group, any copy.)
+export function repliesToLatestReadBack(state: OnboardingState, memberId: string, replyToNativeId: string | undefined): boolean {
+  if (replyToNativeId === undefined || replyToNativeId === "") return false;
+  const ids = state.lastReadBack?.nativeIds ?? [];
+  return ids.some((entry) => entry.nativeId === replyToNativeId && (entry.memberId === null || entry.memberId === memberId));
 }
 
 export function readBackDeliveredTo(state: OnboardingState, memberId: string): boolean {

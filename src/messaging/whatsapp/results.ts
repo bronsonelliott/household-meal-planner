@@ -29,7 +29,7 @@ export function sortSendAnswer(answer: ApiAnswer, now: () => number = Date.now):
       const id = answer.body?.messages?.[0]?.id;
       // A 200 with no message ID is not the answer we know how to read; do not claim it was sent.
       if (typeof id !== "string") return { kind: "unknown", detail: "WhatsApp answered ok but gave no message ID" };
-      return { kind: "sent", timestamp: now() };
+      return { kind: "sent", timestamp: now(), nativeId: id };
     }
 
     case "timeout":

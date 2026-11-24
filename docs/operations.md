@@ -115,6 +115,36 @@ here. It is delivered the next time they write.
 This one comes from the bridge, not the watchdog. Your Anthropic key was rejected or the account is
 out of credit. See [model.md](model.md). The bot rechecks every 30 minutes and resumes by itself.
 
+## House-rules setup in the chat
+
+With no `data/profile.md` the bot interviews the adults in the chat when it starts (the first
+setup), and writes the profile once an adult says "save it". These words work in the chat:
+
+- **`set up house rules`** starts the interview, or picks it up again after "cancel setup". If a
+  profile already exists this is a **redo**: the old rules stay in use until you approve new ones,
+  and until the redo is saved or cancelled the bot reads your messages as interview answers, not as
+  meal requests (recipe commands such as `sources` still work). After a redo is saved, "undo"
+  within 30 minutes puts the old file back. The first setup has nothing to go back to, so it has no
+  undo.
+- **`cancel setup`** stops the interview. What you had answered is kept. A first setup that is
+  cancelled stays cancelled across restarts, and drafting waits.
+- **`use the sample`** loads the example rules as a proposal. It still has to be approved with
+  "save it", and you can change it first.
+- **`looks good`, `save it`, `save`, `yes save`** approve. Replying directly to the bot's read-back
+  saves at once; any other "save it" gets one question ("Save these rules: ...?") first, so what
+  you approve is exactly what you were shown.
+
+**"Awaiting profile"** is what the bot is doing when it has no profile and the first setup is not
+finished (not started, cancelled or half done). It makes no draft attempts, writes no failed-draft
+or skipped-week records, and sends one reminder per week, once draft time has passed
+(`state/awaiting-profile-<week>.json` is its note that the reminder went out). The watchdog does
+not alert about the missing draft while the setup's state file (`state/onboarding.json`) is
+readable. Once you save, the bot looks at the schedule again from that moment: if the draft window
+is open it drafts at once (marked late); otherwise it tells the chat when the next draft will be.
+Weeks that went by are never drafted afterwards. A damaged `state/onboarding.json` is an alert
+and stops the bridge from starting: fix it or move it aside. In a dry run the interview uses
+`state/onboarding.dry-run.json` and never writes the profile.
+
 ## Pausing the bot
 
 To stop the bot (a holiday, or while you change settings):
@@ -142,7 +172,7 @@ To skip a single week from chat, ask the bot ("skip next week").
 - **Logs:** whatever your service manager captures (`docker logs`, `journalctl`, the launchd log
   file). The bot's log lines are designed not to contain secrets or your message text (covered by the test
   suite).
-- **`state/`:** the heartbeat file, the message journal, per-week draft markers
+- **`state/`:** the heartbeat file, the message journal, the house-rules interview's notes (`onboarding.json`), per-week draft markers
   (`friday-posted-<week>.json`, `friday-error-<week>.json`), the alert-state folder the watchdog uses
   to remember what it has already reported, and the send-failure record. To make the watchdog report
   something again, delete its file in `state/alert-state/`.

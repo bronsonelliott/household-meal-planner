@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CHICAGO_SCHEDULE } from "./config-fixtures.ts";
 import type { InboundEvent, SendOutcome } from "../../src/messaging/types.ts";
+import type { OnboardingExtractOutcome, OnboardingExtractRequest } from "../../src/onboarding/state.ts";
 import type { IngredientFill, IngredientRequest, Operation } from "../../src/week/changeset.ts";
 import { Worker, type Brain, type BrainRequest, type BrainResult, type WorkerPaths } from "../../src/week/worker.ts";
 
@@ -69,6 +70,8 @@ type Handler = (request: BrainRequest) => BrainResult;
 export class StubBrain implements Brain {
   handled: BrainRequest[] = [];
   fillRequests: IngredientRequest[][] = [];
+  // Set by the interview tests: how the stub reads the household's setup answers.
+  extractOnboarding?: (request: OnboardingExtractRequest) => Promise<OnboardingExtractOutcome>;
   private handlers: Handler[] = [];
   private fills: IngredientFill[][] = [];
 

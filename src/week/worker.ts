@@ -37,6 +37,7 @@ import {
   NIGHTS,
   ProfileError,
   readProfile,
+  readProfileStatus,
   removeRule,
   removeVeto,
   undoLastChange,
@@ -60,8 +61,11 @@ import {
   type IngredientRequest,
   type Operation,
 } from "./changeset.ts";
+import { parseInterviewCommand } from "../onboarding/control.ts";
+import { AWAITING_PROFILE_LINE } from "../onboarding/questions.ts";
 import type { OnboardingExtractOutcome, OnboardingExtractRequest } from "../onboarding/state.ts";
-import { BatchJournal, journalPath, type JournalEntry, type JournalRecord, type LogAction, type Step } from "./journal.ts";
+import { Interview, type InterviewSettings } from "./interview.ts";
+import { BatchJournal, journalPath, type InterviewInput, type JournalEntry, type JournalRecord, type LogAction, type Step } from "./journal.ts";
 import type { ScheduleConfig } from "../config.ts";
 import { injectFills, loggedNights, nightsNeedingIngredients, planWeeks, resolveDish, resolveTargetWeek } from "./plan.ts";
 import {
@@ -160,6 +164,11 @@ export interface WorkerOptions {
   schedule: ScheduleConfig;
   timers?: Timers;
   log?: (line: string) => void;
+  // Turns the house-rules interview on: with these settings, a household with no profile is
+  // interviewed in the chat, and `set up house rules` can start a redo. Left out, the worker needs a profile.
+  interview?: InterviewSettings;
+  // The interview just saved the profile (the id names the save, for anything that must act once).
+  onProfileSaved?: (commitId: string, mode: "first-run" | "redo") => void;
   // A brain call failed. The messages stay queued (and unhandled) until flush() is called
   // again or the next message arrives; the scheduler's failure policy decides when.
   onFailure?: (error: unknown, what: "messages" | "friday-draft") => void;
@@ -210,11 +219,26 @@ export class Worker {
   private chain: Promise<unknown> = Promise.resolve();
   private timers: Timers;
   private log: (line: string) => void;
+  private interview: Interview | null = null;
+  private lastNudgeAt = -Infinity;
 
   constructor(private options: WorkerOptions) {
     this.timers = options.timers ?? DEFAULT_TIMERS;
     this.log = options.log ?? ((line) => console.log(`${new Date().toISOString()} ${line}`));
     this.journal = new BatchJournal(journalPath(options.paths.stateDir), this.log);
+    if (options.interview) {
+      this.interview = new Interview({
+        stateDir: options.paths.stateDir,
+        profileFiles: options.paths.profileFiles,
+        journal: this.journal,
+        extract: options.brain.extractOnboarding ? (request) => options.brain.extractOnboarding!(request) : undefined,
+        send: (text, key) => options.send(text, key),
+        now: options.now,
+        log: this.log,
+        settings: options.interview,
+        onProfileSaved: (commitId, mode) => this.profileSaved(commitId, mode),
+      });
+    }
   }
 
   // ----- Entry points -----
@@ -237,6 +261,27 @@ export class Worker {
         .catch(() => {}) // run() already logged any failure
         .finally(() => this.commandsInFlight.delete(event.id));
       return;
+    }
+    // The house-rules interview: its commands work any time; while it is under way, everything else is an answer.
+    if (this.interview) {
+      const control = parseInterviewCommand(event.text);
+      const interviewing = this.interview.isActive();
+      if (control === "setup" || control === "cancel" || control === "sample" || (control === "approve" && interviewing)) {
+        if (this.commandsInFlight.has(event.id)) return;
+        this.commandsInFlight.add(event.id);
+        this.run(() => this.handleInterviewCommand(event, control))
+          .catch(() => {})
+          .finally(() => this.commandsInFlight.delete(event.id));
+        return;
+      }
+      if (!interviewing && !this.hasProfile()) {
+        if (this.commandsInFlight.has(event.id)) return;
+        this.commandsInFlight.add(event.id);
+        this.run(() => this.handleWithoutProfile(event))
+          .catch(() => {})
+          .finally(() => this.commandsInFlight.delete(event.id));
+        return;
+      }
     }
     if (this.pending.some((queued) => queued.id === event.id)) return;
     this.pending.push(event);
@@ -282,7 +327,7 @@ export class Worker {
   recover(): Promise<void> {
     return this.run(async () => {
       for (const entry of this.journal.unfinished()) {
-        if (entry.batch) await this.finishBatch(entry.id);
+        if (entry.batch || entry.interview) await this.finishBatch(entry.id);
         else if (entry.draft) await this.recoverDraft(entry.id);
       }
     });
@@ -368,6 +413,112 @@ export class Worker {
     await this.finishBatch(id);
   }
 
+  // ----- The house-rules interview -----
+
+  private hasProfile(): boolean {
+    return readProfileStatus(this.options.paths.profileFiles.profilePath).kind !== "setup-needed";
+  }
+
+  // At start-up: begin the first-run interview if there is no profile (the welcome is posted once;
+  // a restart does not post it again). Call after recover(), in the same queue.
+  startOnboarding(): Promise<void> {
+    return this.run(async () => {
+      const interview = this.interview;
+      if (!interview) return;
+      interview.closeIfProfileAppeared();
+      if (!interview.startupNeeded()) return;
+      const dry = this.options.interview!.dryRun ? "dry-" : "";
+      const id = `iv-start-${dry}${this.options.now()}`;
+      this.journal.append({ type: "interview", id, inboundIds: [], at: new Date(this.options.now()).toISOString(), input: { kind: "startup" } });
+      await this.finishInterviewTurn(this.journal.get(id)!);
+    });
+  }
+
+  // Commands and approvals, each one a turn of its own. Answers waiting for the quiet window are read first, in order.
+  private async handleInterviewCommand(event: InboundEvent, command: "setup" | "cancel" | "sample" | "approve"): Promise<void> {
+    const interview = this.interview!;
+    if (this.quietTimer !== null) {
+      this.timers.clear(this.quietTimer);
+      this.quietTimer = null;
+    }
+    const waiting = this.pending.splice(0);
+    if (waiting.length > 0) await this.handleBatch(waiting);
+    if (interview.load().kind === "corrupt") {
+      await this.replyAlone(event, "I can't read my setup notes (state/onboarding.json), so I can't start or change the setup. The admin needs to look at it; bun run doctor says what is wrong.");
+      return;
+    }
+    const input: InterviewInput =
+      command === "approve"
+        ? { kind: "approve", by: event.memberId, byName: event.memberName, messageId: event.id, repliesToNativeId: event.replyToNativeId ?? null }
+        : { kind: "command", command, by: event.memberId, byName: event.memberName, messageId: event.id };
+    this.journal.append({ type: "interview", id: `iv-${event.id}`, inboundIds: [event.id], at: new Date(this.options.now()).toISOString(), input });
+    await this.finishBatch(`iv-${event.id}`);
+  }
+
+  // Answers to the interview: read by the model once, recorded, then carried out.
+  private async handleInterviewAnswers(events: InboundEvent[]): Promise<void> {
+    const interview = this.interview!;
+    let input: InterviewInput;
+    try {
+      input = await interview.prepareAnswers(events);
+    } catch (error) {
+      // Nothing was recorded: put the messages back, unhandled, for the next try.
+      this.pending.unshift(...events);
+      this.log(`reading the interview answers failed for ${events.length} message(s); holding them: ${(error as Error)?.message ?? error}`);
+      this.options.onFailure?.(error, "messages");
+      return;
+    }
+    const id = `iv-${events[0]!.id}`;
+    this.journal.append({ type: "interview", id, inboundIds: events.map((event) => event.id), at: new Date(this.options.now()).toISOString(), input });
+    await this.finishBatch(id);
+  }
+
+  private async finishInterviewTurn(entry: JournalEntry): Promise<void> {
+    const id = entry.id;
+    try {
+      await this.interview!.run(id);
+    } catch (error) {
+      // Not marked done: the turn runs again after a restart, from its recorded steps.
+      this.log(`interview turn ${id} stopped: ${(error as Error)?.stack ?? error}`);
+      throw error;
+    }
+    for (const inboundId of entry.interview!.inboundIds) this.options.markHandled(inboundId);
+    if (!entry.done) this.journal.append({ type: "done", id });
+  }
+
+  // No profile and no interview running (it was cancelled): meal requests cannot be planned.
+  // The message is answered with a nudge, at most once in half an hour, and otherwise left alone.
+  private async handleWithoutProfile(event: InboundEvent): Promise<void> {
+    const now = this.options.now();
+    const nudge = now - this.lastNudgeAt >= 30 * 60_000;
+    if (nudge) this.lastNudgeAt = now;
+    await this.replyAlone(event, nudge ? AWAITING_PROFILE_LINE : null);
+  }
+
+  // A one-line answer to one message through the ordinary batch path, so it is journaled like any reply.
+  private async replyAlone(event: InboundEvent, text: string | null): Promise<void> {
+    this.journal.append({
+      type: "batch",
+      id: event.id,
+      inboundIds: [event.id],
+      at: new Date(this.options.now()).toISOString(),
+      today: this.today(),
+      weeksBefore: [],
+      steps: text === null ? [] : [{ kind: "say", text }],
+      fills: [],
+      brainText: null,
+    });
+    await this.finishBatch(event.id);
+  }
+
+  // The interview saved the profile: the planner reads it fresh from now on (it reads the file for every
+  // job), and the quiet window follows the new profile's batching setting.
+  private profileSaved(commitId: string, mode: "first-run" | "redo"): void {
+    const status = readProfileStatus(this.options.paths.profileFiles.profilePath);
+    if (status.kind === "ready") this.options.quietWindowMs = status.profile.thresholds.batchingWindowSeconds * 1000;
+    this.options.onProfileSaved?.(commitId, mode);
+  }
+
   // ----- Monday rollover -----
 
   private rolloverIfDue(): void {
@@ -389,6 +540,7 @@ export class Worker {
   // ----- A batch of messages -----
 
   private async handleBatch(events: InboundEvent[]): Promise<void> {
+    if (this.interview?.isActive()) return this.handleInterviewAnswers(events);
     const id = events[0]!.id;
     let record: Extract<JournalRecord, { type: "batch" }>;
     try {
@@ -520,6 +672,7 @@ export class Worker {
   // marks its messages handled. Safe to call any number of times.
   private async finishBatch(id: string): Promise<void> {
     const entry = this.journal.get(id);
+    if (entry?.interview) return this.finishInterviewTurn(entry);
     if (!entry || !entry.batch) return;
     const batch = entry.batch;
 
@@ -592,8 +745,10 @@ export class Worker {
 
     // The restated weeks and any list, from the files as they now stand.
     const blocks: string[] = [];
-    const profileNow = readProfile(paths.profileFiles.profilePath);
-    const staples = profileNow.staples;
+    // With no profile yet (the interview has not finished) there are no lists to build either.
+    const statusNow = readProfileStatus(paths.profileFiles.profilePath);
+    const profileNow = statusNow.kind === "ready" ? statusNow.profile : null;
+    const staples = profileNow?.staples ?? [];
     for (const week of [...plan.weeks.values()].sort((a, b) => a.weekOf.localeCompare(b.weekOf))) {
       if (plan.changedNights.has(week.weekOf)) {
         blocks.push(renderRestatedWeek(week, plan.extras.get(week.weekOf) ?? {}));
@@ -601,6 +756,7 @@ export class Worker {
       if (!plan.listTouched.has(week.weekOf)) continue;
       if (week.status !== "locked" && week.status !== "current") continue;
 
+      if (!profileNow) continue;
       const list = buildGroceryList(week, staples, profileNow.grocerySections);
       if (plan.lockedNow.has(week.weekOf) || week.postedList === null) {
         blocks.push(renderGroceryList(week, list)); // the first list for this week

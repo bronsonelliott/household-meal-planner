@@ -74,6 +74,8 @@ export function normalizeEnvelope(envelope: any, botNumber: string): Normalized 
       hasAttachments: Array.isArray(data.attachments) && data.attachments.length > 0,
       mentionsBot: mentions.some((mention) => mention.number === botNumber),
       repliesToBot: Boolean(quote) && (quote.authorNumber === botNumber || quote.author === botNumber),
+      // A Signal message is named by its send time, so the quote's id is the quoted message's timestamp.
+      ...(quote && (typeof quote.id === "number" || typeof quote.id === "string") ? { replyToNativeId: String(quote.id) } : {}),
       timestamp: envelope.timestamp,
     },
   };

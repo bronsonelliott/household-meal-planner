@@ -66,6 +66,7 @@ export function routeMessage(message: IncomingMessage, journalId: string, contex
         timestamp: message.timestamp,
         mentionsBot: message.mentionsBot,
         repliesToBot: message.repliesToBot,
+        ...(message.replyToNativeId !== undefined ? { replyToNativeId: message.replyToNativeId } : {}),
       },
     };
   }

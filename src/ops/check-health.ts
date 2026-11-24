@@ -10,8 +10,12 @@
 //   heartbeat-stale        the bridge has not had a healthy chat-app check for over an hour
 //   friday-draft-missing   the weekly draft is not posted yet, some minutes after the draft time
 //   friday-skipped-<week>  the bridge gave up on a week at the catch-up deadline (one alert per week)
+//   onboarding-state       the house-rules interview's state file cannot be read
 //   unanswered             a member's message has waited 15 minutes with no reply
 //   send failures          new lines in send-failures.jsonl (except "awaiting-reply", see below)
+//
+// While the first house-rules interview is verifiably in progress (its state file is readable and
+// there is no profile yet), a missing draft is expected, not a fault, and is not alerted.
 //
 // "awaiting-reply" is a WhatsApp message held until the person writes again (WhatsApp only lets a
 // bot start a conversation inside a 24-hour window). That is a delay, not a failure, so it is not
@@ -35,8 +39,9 @@ import { addDays, describeMinutes, localDate, mondayOf } from "../week/state.ts"
 import { postedMarkerPath, sendUnknownMarkerPath } from "../week/worker.ts";
 import { createAlertNotifier, type AlertNotifier } from "./alerts.ts";
 import { alertStatePath, clearAlert, hasAlerted, heartbeatPath, recordAlert, unansweredPath } from "./heartbeat.ts";
-import { draftPhase, fridayErrorPath, lastDraftInstant, type FridayErrorFile } from "./scheduler.ts";
+import { awaitingProfileMarkerPath, draftPhase, fridayErrorPath, lastDraftInstant, type FridayErrorFile } from "./scheduler.ts";
 import { SEND_FAILURES_FILE } from "../messaging/sender.ts";
+import { awaitingProfile, onboardingStateProblem } from "../onboarding/awaiting.ts";
 
 const MINUTE = 60_000;
 export const HEARTBEAT_STALE_MS = 60 * MINUTE;
@@ -45,7 +50,7 @@ const MAX_FAILURE_LINES_PER_ALERT = 10;
 const OFFSET_KEY = "send-failures.offset";
 
 export interface HealthCheckOptions {
-  config: Pick<AppConfig, "schedule" | "paths">;
+  config: Pick<AppConfig, "schedule" | "paths"> & { dryRun?: boolean };
   nowMs: number;
   notifier: AlertNotifier;
   log: (line: string) => void; // ordinary progress lines
@@ -76,6 +81,7 @@ class HealthCheck {
 
   async run(): Promise<void> {
     await this.checkHeartbeat();
+    await this.checkOnboardingState();
     await this.checkDraft();
     await this.checkSkippedWeeks();
     await this.checkUnanswered();
@@ -128,6 +134,16 @@ class HealthCheck {
     }
   }
 
+  // A damaged interview file is a fault whatever else is going on: the bot cannot interview or resume.
+  private async checkOnboardingState(): Promise<void> {
+    const problem = onboardingStateProblem(this.stateDir, this.options.config.dryRun === true);
+    if (problem) {
+      await this.raise("onboarding-state", `Dinner bot: ${problem} The house-rules interview cannot continue until it is fixed or moved aside. See docs/operations.md.`);
+    } else {
+      this.resolve("onboarding-state");
+    }
+  }
+
   // The draft should be posted shortly after the draft time. "Shortly" is lateAfterMinutes (30 by
   // default), the same moment the draft itself starts being marked "(late)". It stays on until the
   // draft posts or the week is skipped.
@@ -141,6 +157,13 @@ class HealthCheck {
     }
 
     const weekOf = addDays(mondayOf(localDate(this.nowMs, schedule.timeZone)), 7);
+    // The first interview is under way (verified from its state file): no profile, so no draft yet, on purpose.
+    const profilePath = join(this.options.config.paths.dataDir, "profile.md");
+    const awaiting = awaitingProfile({ stateDir: this.stateDir, profilePath, dryRun: this.options.config.dryRun === true });
+    if (awaiting || (draftPhase(this.nowMs, schedule) === "past-deadline" && existsSync(awaitingProfileMarkerPath(this.stateDir, weekOf)))) {
+      this.resolve(key);
+      return;
+    }
     // Posted (or counted as posted), or sent with an unknown result, which send-failures.jsonl reports.
     if (existsSync(postedMarkerPath(this.stateDir, weekOf)) || existsSync(sendUnknownMarkerPath(this.stateDir, weekOf))) {
       this.resolve(key);

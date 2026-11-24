@@ -72,6 +72,7 @@ function normalizeMessage(raw: any, contacts: any[]): IncomingMessage | "skip" {
     hasAttachments,
     mentionsBot: false,
     repliesToBot: false,
+    ...(typeof raw?.context?.id === "string" && raw.context.id !== "" ? { replyToNativeId: raw.context.id } : {}),
     timestamp: Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : Date.now(),
   };
 }

@@ -40,6 +40,10 @@ export interface IncomingMessage {
   hasAttachments: boolean;
   mentionsBot: boolean;
   repliesToBot: boolean;
+  // The platform's own ID of the message this one is a direct reply to, when the platform says
+  // (Telegram's reply, Signal's quote, WhatsApp's context, iMessage's thread). The same kind of
+  // ID that a send reports in `nativeId`, so "a reply to the read-back" can be told exactly.
+  replyToNativeId?: string;
   timestamp: number; // epoch milliseconds
 }
 
@@ -57,6 +61,7 @@ export interface InboundEvent {
   timestamp: number;
   mentionsBot: boolean;
   repliesToBot: boolean;
+  replyToNativeId?: string; // see IncomingMessage
 }
 
 // ---------------------------------------------------------------------------------------
@@ -75,6 +80,8 @@ export interface PartOutcome {
   attempts?: number;
   // The adapter is keeping this part until the person replies (see `queued` on SendDetail).
   queued?: true;
+  // The platform's ID of the message this part became, when the platform gave one.
+  nativeId?: string;
 }
 
 // How a whole message ended for one recipient. `memberId` is null for the shared conversation.
@@ -109,8 +116,9 @@ export interface SendDetail {
 // shared sender how to treat it; the shared sender returns the final answer to the worker.
 export type SendOutcome = SendDetail &
   (
-    | { kind: "sent"; timestamp: number; dryRun?: true }
-    | { kind: "partial"; timestamp: number; failedMembers: FailedMember[]; detail?: string }
+    // `nativeId` is the platform's own ID for the message that was posted, when it gives one.
+    | { kind: "sent"; timestamp: number; dryRun?: true; nativeId?: string }
+    | { kind: "partial"; timestamp: number; failedMembers: FailedMember[]; detail?: string; nativeId?: string }
     | {
         kind: "failed";
         detail: string;

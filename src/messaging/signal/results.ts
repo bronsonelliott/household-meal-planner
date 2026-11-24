@@ -71,11 +71,13 @@ export function sortSendAnswer(answer: RpcAnswer): SendOutcome {
   const failures = results.filter((result) => result?.type !== "SUCCESS");
   const successes = results.filter((result) => result?.type === "SUCCESS");
 
-  if (failures.length === 0) return { kind: "sent", timestamp };
+  // A Signal message is named by its timestamp; that is also what a later quote of it carries.
+  const nativeId = typeof timestamp === "number" ? { nativeId: String(timestamp) } : {};
+  if (failures.length === 0) return { kind: "sent", timestamp, ...nativeId };
   const failedMembers: FailedMember[] = failures.map((result) => ({ member: memberName(result), type: String(result?.type) }));
   if (successes.length === 0) {
     const summary = failedMembers.map((member) => `${member.member} ${member.type}`).join(", ");
     return failed(`no member got the message: ${summary}`, findRateLimit(results));
   }
-  return { kind: "partial", timestamp, failedMembers };
+  return { kind: "partial", timestamp, failedMembers, ...nativeId };
 }

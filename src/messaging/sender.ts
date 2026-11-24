@@ -348,7 +348,8 @@ function partDetail(parts: PartResult[], total: number): PartOutcome[] {
   const shown: PartOutcome[] = parts.map((result, index) => {
     const detail = describeOutcome(result.outcome);
     const queued = result.outcome.kind === "failed" && result.outcome.queued === true;
-    return { part: index + 1, kind: result.outcome.kind, ...(detail ? { detail } : {}), ...(queued ? { queued: true as const } : {}), attempts: result.attempts };
+    const nativeId = result.outcome.kind === "sent" || result.outcome.kind === "partial" ? result.outcome.nativeId : undefined;
+    return { part: index + 1, kind: result.outcome.kind, ...(detail ? { detail } : {}), ...(queued ? { queued: true as const } : {}), ...(nativeId ? { nativeId } : {}), attempts: result.attempts };
   });
   for (let index = parts.length; index < total; index++) shown.push({ part: index + 1, kind: "not-attempted" });
   return shown;

@@ -228,6 +228,7 @@ export class IMessageAdapter implements MessagingAdapter {
       hasAttachments: message.hasAttachments,
       mentionsBot: mentionsName(text, config.botName),
       repliesToBot: message.threadOriginatorGuid !== null && this.sentGuids.has(message.threadOriginatorGuid),
+      ...(message.threadOriginatorGuid !== null ? { replyToNativeId: message.threadOriginatorGuid } : {}),
       timestamp: message.dateCreated,
     };
     await this.handlers!.onMessage(incoming);

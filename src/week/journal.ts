@@ -10,6 +10,8 @@ import type { LoggedNight } from "../data/log.ts";
 import type { Night } from "../data/profile.ts";
 import type { RecipeCommand } from "../recipes/commands.ts";
 import type { SendOutcome } from "../messaging/types.ts";
+import type { CommitRecord, CommitStatus } from "../onboarding/commit.ts";
+import type { BatchMessage, OnboardingExtractOutcome, OnboardingState, Proposal } from "../onboarding/state.ts";
 import type { IngredientFill, Operation } from "./changeset.ts";
 import type { NightValue, WeekFile } from "./state.ts";
 
@@ -34,6 +36,37 @@ export type Step =
   | { kind: "command"; command: RecipeCommand; admin: boolean; by?: string }
   | { kind: "say"; text: string }; // a dropped operation or the one question: just a reply line
 
+// ---------------------------------------------------------------------------------------------
+// The house-rules interview's turns
+// ---------------------------------------------------------------------------------------------
+
+// What started a turn. A turn is everything the bot does in answer to one thing: it is recorded
+// first, then carried out step by step, and each step's result is recorded as it finishes. A
+// restart runs the turn again from the top: a step with a recorded result is skipped (the model
+// is never asked twice), and a send is repeated with the same key, which the sender knows.
+export type InterviewInput =
+  // The bridge started with no profile (or a redo began): welcome the adults and ask the first question.
+  | { kind: "startup" }
+  // Answers from the adults, with the model's reading of them (null when only "skip" was said).
+  | { kind: "answers"; messages: BatchMessage[]; addressed: boolean; extraction: OnboardingExtractOutcome | null }
+  | { kind: "command"; command: "setup" | "cancel" | "sample"; by: string; byName: string; messageId: string }
+  | { kind: "approve"; by: string; byName: string; messageId: string; repliesToNativeId: string | null };
+
+// What one step of a turn produced. The wording of each `label` is the transition it records.
+export type InterviewStep =
+  // The interview's state, after a transition: started, extraction applied, question asked,
+  // clarification asked, read-back recorded, read-back delivered, snapshot asked, commit begun,
+  // finished, or cancelled.
+  | { kind: "state"; label: string; state: OnboardingState; changed?: boolean }
+  // The picture of the world when the turn began: what the file said, so that a replay decides the same way.
+  | { kind: "began"; state: OnboardingState | null; profile: "ready" | "setup-needed" | "error"; fingerprint: string }
+  // A message to the household and how the send ended (with the chat app's IDs in the outcome).
+  | { kind: "said"; label: string; key: string; text: string; outcome: SendOutcome }
+  // What the proposal works out to right now (also what a "save" would write).
+  | { kind: "proposal"; proposal: Proposal; previous: Proposal | null; text: string; problems: string[]; flags: string[] }
+  | { kind: "commit-prepared"; record: CommitRecord }
+  | { kind: "commit-finished"; status: CommitStatus };
+
 export type LogAction =
   | { kind: "lock"; weekOf: string; nights: LoggedNight[] }
   | { kind: "change-after-lock"; weekOf: string; night: Night; dish: string; protein: string; recipeId?: string }
@@ -51,6 +84,8 @@ export type JournalRecord =
       fills: IngredientFill[];
       brainText: string | null;
     }
+  | { type: "interview"; id: string; inboundIds: string[]; at: string; input: InterviewInput }
+  | { type: "interview-step"; id: string; index: number; step: InterviewStep }
   | { type: "step-done"; id: string; index: number; fragment: string | null }
   | { type: "applied"; id: string; reply: string | null }
   | { type: "draft"; id: string; weekOf: string; week: WeekFile; text: string }
@@ -61,6 +96,8 @@ export type JournalRecord =
 export interface JournalEntry {
   id: string;
   batch: Extract<JournalRecord, { type: "batch" }> | null;
+  interview: Extract<JournalRecord, { type: "interview" }> | null;
+  interviewSteps: Map<number, InterviewStep>;
   draft: Extract<JournalRecord, { type: "draft" }> | null;
   stepsDone: Map<number, string | null>;
   applied: { reply: string | null } | null;
@@ -112,7 +149,7 @@ export class BatchJournal {
   private entry(id: string): JournalEntry {
     let entry = this.entries.get(id);
     if (!entry) {
-      entry = { id, batch: null, draft: null, stepsDone: new Map(), applied: null, sending: false, outcome: null, done: false };
+      entry = { id, batch: null, interview: null, interviewSteps: new Map(), draft: null, stepsDone: new Map(), applied: null, sending: false, outcome: null, done: false };
       this.entries.set(id, entry);
     }
     return entry;
@@ -124,6 +161,13 @@ export class BatchJournal {
       case "batch":
         entry.batch = record;
         for (const inboundId of record.inboundIds) this.byInbound.set(inboundId, record.id);
+        break;
+      case "interview":
+        entry.interview = record;
+        for (const inboundId of record.inboundIds) this.byInbound.set(inboundId, record.id);
+        break;
+      case "interview-step":
+        entry.interviewSteps.set(record.index, record.step);
         break;
       case "draft":
         entry.draft = record;
