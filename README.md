@@ -11,6 +11,47 @@ language, say "lock it", and it posts the grocery list, sorted the way you walk 
 - It is designed to answer only the adults you list; anyone else in the chat is ignored (covered by
   the test suite).
 
+## Your house rules are the brain
+
+Every family already has rules about dinner, even if nobody wrote them down. Friday is pizza or
+eating out. Weeknights have to be quick because of practice. Red meat no more than twice a week.
+Sunday is the night for the long cook. Somebody won't touch mushrooms. That is what makes your week
+yours, and it is the heart of this bot.
+
+You write them down once, in plain sentences, in a file called `profile.md`:
+
+```
+## Rules
+
+- Friday is eating out. [fixed friday out]
+- Weeknight dinners are quick. [require quick weeknights]
+- At least one pasta night a week. [min pasta 1]
+- Red meat no more than twice a week. [max red-meat 2]
+- Sunday is the big cook. [require big-cook sunday]
+- Lean toward what is in season. [advisory]
+```
+
+Then the bot plans every week around them:
+
+- **Your rules, not a generic meal plan.** The draft starts from your rules, your usual dishes and
+  the dishes you've said you like, then adds a few new ones.
+- **Checked, not just suggested.** The part in square brackets is a check the bot runs on its own
+  draft before posting it. If the model breaks a rule, the code catches it and sends the draft back
+  once, naming the problem. If the second try still breaks a rule, the draft doesn't go out and the
+  admin is told. So "at least one pasta night" means at least one pasta night.
+- **In order of importance.** Put the rules that matter most at the top. When a week can't fit all
+  of them, the ones at the bottom give way first.
+- **The adults still have the last word.** The rules get the week started; what you ask for in the
+  chat comes first. If a request bends a rule, the bot says so plainly instead of arguing.
+- **You can change them by talking to it.** "From now on, no fish on weeknights", "never make tuna
+  casserole again", "add chicken tacos to the usual dishes", "Sam won't eat mushrooms". The bot
+  updates `profile.md`, confirms the change in the chat, and "undo that" takes back the most recent
+  change. You can also edit the file by hand any time.
+
+The profile also holds your usual dishes and the ingredients you buy for them, the dishes you never
+want again, how your grocery list is laid out, and the staples you check before shopping. The full
+format is in [Your household profile](#your-household-profile).
+
 ## What it looks like
 
 On draft day (Friday afternoon by default) the bot posts:
@@ -113,9 +154,19 @@ Close the terminal and open a new one, then check it worked:
 bun --version
 ```
 
-It prints a version number. Then get the code (or click **Code**, then **Download ZIP**, on the
-repository page, unzip it, and open a terminal in that folder). The repository is private until
-its owner makes it public, so cloning may ask you to sign in to GitHub.
+It prints a version number. Now get the code. Pick one route.
+
+*Route A, download the ZIP (recommended if you don't use git).* On the repository page click
+**Code**, then **Download ZIP**. Unzip it (double-click the file), then open a terminal and go into
+the unzipped folder. If it is in your Downloads folder, that looks like this (the folder name may
+differ; type `cd ` and drag the folder onto the terminal window to fill it in):
+
+```
+cd ~/Downloads/household-meal-planner-main
+bun install
+```
+
+*Route B, use git.* This needs git installed (`git --version` prints a version if you have it).
 
 ```
 git clone https://github.com/bronsonelliott/household-meal-planner.git
@@ -123,33 +174,72 @@ cd household-meal-planner
 bun install
 ```
 
+While the repository is private, cloning asks you to sign in to GitHub, and your GitHub password
+will not work there. Either use Route A, or run `gh auth login` first (it needs the free GitHub
+CLI, `gh`) and then clone.
+
 Run every command in this guide **in this folder** (the "project folder").
 
 **2. Make the Telegram bot and find your IDs.** Follow steps 1 to 4 of
 [docs/platforms/telegram.md](docs/platforms/telegram.md): make the bot with BotFather, turn privacy
-mode off, make the group, and find the group's chat ID and each adult's user ID. Keep the bot token
-and the numbers in a note for the next steps. Do it now, before you edit any file.
+mode off, make the group, and find the group's chat ID and each adult's user ID. When you come back
+here, have these in a note:
 
-**3. Make your settings file.** `config.example.toml` is a template with comments on every line. It
-ships set up for Signal, so you must change it for Telegram:
+- the **bot token** (looks like `123456789:AAH...`),
+- the **group's chat ID** (a negative number like `-1001234567890`), and
+- each adult's **Telegram user ID** (a plain number like `111111111`), here Alex's and Sam's.
 
+Do it now, before you edit any file.
+
+**3. Make your settings file.** Make a new file named `config.toml` in the project folder (use any
+plain text editor, not Word), copy the whole block below into it, then change the marked values:
+
+```toml
+[household]
+name = "The Example Household"          # CHANGE: your household's name
+botName = "Dinner Bot"
+
+[[members]]
+id = "alex"
+name = "Alex"                           # CHANGE: the admin's name
+role = "admin"
+
+[members.identities]
+telegram = "111111111"                  # CHANGE: this person's Telegram user ID, keep the quotes
+
+[[members]]
+id = "sam"
+name = "Sam"                            # CHANGE: the second adult's name
+role = "adult"
+
+[members.identities]
+telegram = "222222222"                  # CHANGE: this person's Telegram user ID, keep the quotes
+
+[schedule]
+timezone = "America/New_York"           # CHANGE: your time zone, for example "America/Chicago"
+draftDay = "friday"
+draftTime = "16:00"                     # 24-hour clock: 16:00 is 4 PM
+
+[messaging]
+platform = "telegram"
+
+[messaging.conversation]
+mode = "group"
+
+[messaging.telegram]
+botTokenEnv = "TELEGRAM_BOT_TOKEN"      # leave as is: this is the NAME of the secret, not the token
+chatId = "-1001234567890"               # CHANGE: your group's chat ID, keep the minus sign and quotes
+
+[model]
+id = "claude-sonnet-5-5"
+apiKeyEnv = "ANTHROPIC_API_KEY"         # leave as is: the NAME of the secret, not the key
 ```
-cp config.example.toml config.toml
-```
 
-Open `config.toml` in a text editor and make these changes:
-
-- Under `[household]`, put in your household's name.
-- Under each `[[members]]`, change `name`, and on the `[members.identities]` line replace
-  `signal = "..."` with `telegram = "<that person's user ID>"` (in quotes). Delete the other
-  platforms' lines.
-- Under `[schedule]`, set your `timezone`.
-- Under `[messaging]`, change `platform = "signal"` to `platform = "telegram"`.
-- Delete the whole `[messaging.signal]` block (down to the `groupId` line). Remove the `#` from
-  `[messaging.telegram]`, `botTokenEnv` and `chatId`, and put your group's chat ID in `chatId`.
-
-If you would rather copy than edit, step 5 of the Telegram guide has the complete Telegram version
-of these parts: replace the `[[members]]` and `[messaging]` parts of `config.toml` with it.
+Only the lines marked `CHANGE` need your values; leave everything else alone. Add more adults by
+copying a `[[members]]` block and its `[members.identities]` lines (give each a different `id`).
+Everything not listed here (recipe sources, alerts, folders) has a sensible default. If you would
+rather edit a template yourself, copy `config.example.toml` and change it (it ships set up for
+Signal); [docs/configuration.md](docs/configuration.md) explains every setting.
 
 **4. Put your secrets in a `.env` file.** This is the one place secrets go:
 
@@ -157,11 +247,18 @@ of these parts: replace the `[[members]]` and `[messaging]` parts of `config.tom
 cp .env.example .env
 ```
 
-Open `.env` and replace the placeholder after `ANTHROPIC_API_KEY=` with your Anthropic API key
-([docs/model.md](docs/model.md) shows how to get one) and the one after `TELEGRAM_BOT_TOKEN=` with
-the bot token. Leave the lines for other chat apps (WhatsApp, BlueBubbles) empty or delete them: the
-checks only look at the chat app you chose. Bun reads `.env` by itself whenever you run a command in
-the project folder, so there is nothing to "load". The file stays on your computer; `.gitignore` keeps it out of git.
+Open `.env` (it starts with a dot, so it may be hidden in your file browser; a terminal editor or
+`open -e .env` on a Mac works) and make it exactly two lines, with your real values after the `=`
+(no quotes, no spaces). Delete the lines for the other chat apps (WhatsApp, BlueBubbles):
+
+```
+ANTHROPIC_API_KEY=sk-ant-your-real-key-here
+TELEGRAM_BOT_TOKEN=123456789:your-real-bot-token-here
+```
+
+([docs/model.md](docs/model.md) shows how to get an Anthropic API key.) Bun reads `.env` by itself
+whenever you run a command in the project folder, so there is nothing to "load". The file stays on
+your computer; `.gitignore` keeps it out of git.
 
 **5. Make your profile**, which holds your rules and usual dishes:
 
@@ -170,8 +267,10 @@ mkdir -p data
 cp data.example/profile.md data/profile.md
 ```
 
-Open `data/profile.md` and replace the example dishes and rules with yours. The format is explained
-in [Your household profile](#your-household-profile) below.
+You can leave the example profile as it is for your first run; `bun run doctor` (next step) checks
+it. When you are ready to make it yours, see [Your household profile](#your-household-profile) for
+the format and "Your house rules are the brain" above for how rules work. Whatever you change, keep
+the `##` headings exactly as they are: the bot finds each part by its heading.
 
 **6. Check your files and settings.** This sends nothing and starts nothing:
 
@@ -221,34 +320,39 @@ Online checks:
 A line starting `Warning:` about privacy mode means step 2 of the Telegram guide is not finished.
 Any line starting with `-` is a problem, with the fix beside it.
 
-**8. Start it:**
+**8. Start it.** Do a practice run first, then the real thing.
 
-```
-bun start
-```
-
-The first lines it prints look like this (each starts with the date and time):
-
-```
-2026-11-24T21:05:12.345Z Telegram bot @smith_dinner_bot connected
-2026-11-24T21:05:13.001Z bridge running; data folder /home/you/household-meal-planner/data
-```
-
-"bridge running" means it is up. The bot keeps running until you press Ctrl-C. **It does not post
-anything when it starts.** It posts the weekly draft on draft day and time (Friday 4 PM by
-default), and it answers when Alex or Sam (the adults you listed) write to it.
-
-To see it work without waiting for Friday, and without it sending anything, stop it and start it
-in dry-run mode:
+**8a. Practice run.** This starts the bot but stops it from sending anything:
 
 ```
 HMP_DRY_RUN=1 bun start
 ```
 
-The log line then says "bridge running (DRY RUN: nothing is sent)". Write to the group as one of
-the adults, and the log shows lines starting "DRY RUN" for what it would have sent (they include the message text,
-and are also saved in `state/dry-run-sends.jsonl`). Stop it
-(Ctrl-C) and run plain `bun start` for real.
+The terminal now stays busy while the bot runs, so open a second terminal window if you need to
+type other commands. The first lines look like this (each starts with the date and time):
+
+```
+2026-11-24T21:05:12.345Z Telegram bot @smith_dinner_bot connected
+2026-11-24T21:05:13.001Z bridge running (DRY RUN: nothing is sent); data folder /home/you/household-meal-planner/data
+```
+
+If you see an error instead of the "connected" line, run `bun run doctor --online` (in the second
+window, after stopping the bot) and read what it says. If all is well, write to the group as one of
+the adults, for example "hello" or "what's for dinner Tuesday?". The terminal shows lines starting
+"DRY RUN" for the replies it would have sent; nothing reaches the group. Those lines include the
+message text, and they are also saved in `state/dry-run-sends.jsonl`. Stop the bot by pressing
+Ctrl-C (hold the Control key and press C) in the terminal where it is running.
+
+**8b. The real start:**
+
+```
+bun start
+```
+
+The same lines appear, without "DRY RUN". The bot keeps running, and the terminal stays busy,
+until you press Ctrl-C. **It does not post anything when it starts.** It posts the weekly draft on
+draft day and time (Friday 4 PM by default), and it answers when Alex or Sam (the adults you
+listed) write to it.
 
 To keep it running after you close the terminal, and to start it again after a reboot, use your
 system's service manager: [docs/deployment.md](docs/deployment.md).
