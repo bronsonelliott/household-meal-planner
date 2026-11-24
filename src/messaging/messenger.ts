@@ -97,7 +97,7 @@ export async function startMessenger(adapter: MessagingAdapter, options: Messeng
   let healthTimer: ReturnType<typeof setInterval> | null = null;
 
   try {
-    const inbox = new Inbox(stateDir, log);
+    const inbox = new Inbox(stateDir, log, options.dryRun);
     const notices = new DirectMessageNotices(stateDir);
     const sender = new MessageSender({
       adapter,

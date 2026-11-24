@@ -32,8 +32,11 @@ export class Inbox {
   constructor(
     stateDir: string,
     private log: (line: string) => void,
+    // A practice run keeps its own journal, so messages written during practice are never picked
+    // up as unanswered by the next real start.
+    dryRun = false,
   ) {
-    this.path = join(stateDir, "inbox.jsonl");
+    this.path = join(stateDir, dryRun ? "inbox.dry-run.jsonl" : "inbox.jsonl");
     this.loadJournal();
   }
 
