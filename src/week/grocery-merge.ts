@@ -42,6 +42,14 @@ const SAME_ITEM: Record<string, string> = {
   "cracked black pepper": "pepper",
 };
 
+// Yellow and brown onions are what a recipe means by plain "onion". Red, white, sweet and green
+// onions, scallions and shallots are different things to buy, so they are not listed. Kept apart
+// from SAME_ITEM so a staple "onion" still matches "red onion" the way it always did.
+const SAME_ITEM_FOR_MERGING: Record<string, string> = {
+  "yellow onion": "onion",
+  "brown onion": "onion",
+};
+
 // Words that, if a name is made of nothing else, make it plain water or ice (not "coconut water").
 const WATER_WORDS = new Set(["water", "ice", "cold", "hot", "warm", "boiling", "cubes", "cube", "tap", "filtered", "lukewarm", "of"]);
 
@@ -70,7 +78,7 @@ function plainWords(text: string): string[] {
 // The words used to decide "same item": descriptors dropped, and a few names unified.
 export function itemWords(text: string): string[] {
   const words = plainWords(text);
-  const unified = SAME_ITEM[words.join(" ")];
+  const unified = SAME_ITEM[words.join(" ")] ?? SAME_ITEM_FOR_MERGING[words.join(" ")];
   return unified ? unified.split(" ") : words;
 }
 

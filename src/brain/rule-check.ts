@@ -14,6 +14,7 @@
 //
 // Dislikes are information, never bans: nothing here reads them.
 
+import { displayTag } from "../display-text.ts";
 import { capGroupOf, groupsOfProtein } from "../recipes/protein.ts";
 import { findUsableRecord, proteinOf, usableRecords } from "../recipes/catalog.ts";
 import { findSourceById } from "../recipes/sources.ts";
@@ -244,7 +245,7 @@ export function nightFromChange(
       for (const tag of lower(modelTagsOf(choice))) {
         if (!usedByRules.has(tag) || tags.includes(tag)) continue;
         tags.push(tag);
-        flags.push(`${found.name} has no "${tag}" tag in the profile, so the model's tag was used. Add it to the profile if it's right.`);
+        flags.push(`${found.name} has no "${displayTag(tag)}" tag in the profile, so the model's tag was used. Add it to the profile if it's right.`);
       }
       return { night: { kind: "dish", dish: found.name, pool: found.pool, protein: found.protein, tags, pinned }, flags };
     }
@@ -397,7 +398,7 @@ export function checkWeek(input: CheckInput): CheckResult {
         if (!complete) return; // open nights may still meet it
         const tagged = dishNights.filter((night) => tagsOf(nights[night]!).includes(check.tag));
         if (tagged.length >= check.count) return;
-        const text = `only ${tagged.length} nights tagged "${check.tag}"; ${quoted} needs ${check.count}`;
+        const text = `only ${tagged.length} nights tagged "${displayTag(check.tag)}"; ${quoted} needs ${check.count}`;
         // The agent is at fault when it had enough nights of its own to reach the required count.
         const room = dishNights.filter((night) => canChange(night) && !tagsOf(nights[night]!).includes(check.tag));
         (room.length >= check.count - tagged.length ? violations : bent).push({ key: `rule:${index}`, text, nights: [] });
@@ -405,7 +406,7 @@ export function checkWeek(input: CheckInput): CheckResult {
       }
       case "max": {
         const tagged = dishNights.filter((night) => tagsOf(nights[night]!).includes(check.tag));
-        const text = `${tagged.length} nights tagged "${check.tag}" (${nightList(tagged)}); ${quoted} allows ${check.count}`;
+        const text = `${tagged.length} nights tagged "${displayTag(check.tag)}" (${nightList(tagged)}); ${quoted} allows ${check.count}`;
         tooMany(tagged, check.count, `rule:${index}`, text);
         return;
       }

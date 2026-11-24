@@ -11,6 +11,7 @@
 // the adults approve it as an advisory.
 
 import { NIGHTS, ProfileError, parseProfile, type Night, type NightTarget, type Rule } from "../data/profile.ts";
+import { displayTag } from "../display-text.ts";
 import { capGroupOf, dishCountsFor } from "../recipes/protein.ts";
 import { renderProfile } from "./render.ts";
 import type { Proposal } from "./state.ts";
@@ -68,7 +69,7 @@ export function tagCoverage(rules: readonly Rule[], dishes: readonly TaggedDish[
 export function tagCoverageWarnings(rules: readonly Rule[], dishes: readonly TaggedDish[]): string[] {
   return tagCoverage(rules, dishes)
     .filter((entry) => entry.dishes.length === 0)
-    .map((entry) => `The rule "${entry.rule.prose}" needs a dish tagged "${entry.tag}", and none of your dishes has that tag (a dish's protein, and the group it belongs to such as red-meat or seafood, count as tags). The bot will have to invent dishes for it. Add "${entry.tag}" to the Tags: line of a dish that fits.`);
+    .map((entry) => `The rule "${entry.rule.prose}" needs a dish tagged "${displayTag(entry.tag)}", and none of your dishes has that tag (a dish's protein, and the group it belongs to such as red-meat or seafood, count as tags). The bot will have to invent dishes for it. Add "${displayTag(entry.tag)}" to the Tags: line of a dish that fits.`);
 }
 
 function nightsOf(target: NightTarget, weeknights: readonly Night[]): Night[] {
@@ -92,11 +93,11 @@ export function validateProposal(proposal: Proposal, settings: ValidationSetting
   // 2. Tags: a rule that needs a dish with a tag needs one in the list.
   for (const entry of tagCoverage(rules, proposal.dishes)) {
     if (entry.dishes.length === 0) {
-      problems.push(`The rule ${quote(entry.rule)} needs a dish tagged "${entry.tag}", and none of the dishes so far has that tag. Tell me a dish that fits, or we can drop the rule.`);
+      problems.push(`The rule ${quote(entry.rule)} needs a dish tagged "${displayTag(entry.tag)}", and none of the dishes so far has that tag. Tell me a dish that fits, or we can drop the rule.`);
     } else if (entry.dishes.length === 1) {
-      flags.push(`One dish found for "${entry.tag}" (${entry.dishes[0]}), for the rule ${quote(entry.rule)}. That may not give much variety.`);
+      flags.push(`One dish found for "${displayTag(entry.tag)}" (${entry.dishes[0]}), for the rule ${quote(entry.rule)}. That may not give much variety.`);
     } else if (entry.rule.check.kind === "min" && entry.rule.check.count > entry.dishes.length) {
-      flags.push(`The rule ${quote(entry.rule)} asks for ${entry.rule.check.count}, and I found ${entry.dishes.length} dishes tagged "${entry.tag}". I can look for new ones that fit.`);
+      flags.push(`The rule ${quote(entry.rule)} asks for ${entry.rule.check.count}, and I found ${entry.dishes.length} dishes tagged "${displayTag(entry.tag)}". I can look for new ones that fit.`);
     }
   }
 
@@ -117,7 +118,7 @@ export function validateProposal(proposal: Proposal, settings: ValidationSetting
     for (const ban of forbids) {
       const shared = need.nights.filter((night) => ban.nights.includes(night));
       if (need.tag === ban.tag && shared.length > 0) {
-        problems.push(`${quote(need.rule)} requires "${need.tag}" on ${listNights(shared)}, but ${quote(ban.rule)} forbids it there.`);
+        problems.push(`${quote(need.rule)} requires "${displayTag(need.tag)}" on ${listNights(shared)}, but ${quote(ban.rule)} forbids it there.`);
       }
     }
   }
@@ -137,13 +138,13 @@ export function validateProposal(proposal: Proposal, settings: ValidationSetting
     const { tag, count } = rule.check;
     for (const other of rules) {
       if (other.check.kind === "max" && other.check.tag === tag && count > other.check.count) {
-        problems.push(`${quote(rule)} wants at least ${count} "${tag}" dinners, but ${quote(other)} allows at most ${other.check.count}.`);
+        problems.push(`${quote(rule)} wants at least ${count} "${displayTag(tag)}" dinners, but ${quote(other)} allows at most ${other.check.count}.`);
       }
     }
     const banned = new Set(forbids.filter((ban) => ban.tag === tag).flatMap((ban) => ban.nights));
     const eligible = homeNights.filter((night) => !banned.has(night));
     if (count > eligible.length) {
-      problems.push(`${quote(rule)} wants at least ${count} "${tag}" dinners, but only ${eligible.length} night${eligible.length === 1 ? "" : "s"} are left once the eating-out, away and forbidden nights are taken out.`);
+      problems.push(`${quote(rule)} wants at least ${count} "${displayTag(tag)}" dinners, but only ${eligible.length} night${eligible.length === 1 ? "" : "s"} are left once the eating-out, away and forbidden nights are taken out.`);
     }
   }
 

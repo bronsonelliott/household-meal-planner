@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { displayStaple, displayTag } from "../src/display-text.ts";
 import { parseProfile } from "../src/data/profile.ts";
 import { clarificationMessage, questionFor, TOPIC_QUESTIONS, welcomeMessage } from "../src/onboarding/questions.ts";
 import { explainCheck, renderProfile, renderReadBack, renderSnapshot } from "../src/onboarding/render.ts";
@@ -94,12 +95,12 @@ describe("renderReadBack", () => {
 
   test("dishes, dislikes, vetoes, staples, sections and defaults are all shown", () => {
     const text = renderReadBack(sample(), options).join("\n");
-    expect(text).toContain("- Chicken tacos: chicken; tags quick, mexican");
+    expect(text).toContain("- Chicken tacos: chicken; tags quick, Mexican");
     expect(text).toContain("Dishes you like too:");
     expect(text).toContain("- Sam: mushrooms");
     expect(text).toContain("Never again");
     expect(text).toContain("- Tuna casserole");
-    expect(text).toContain("Always in the house: Olive oil.");
+    expect(text).toContain("Always in the house: olive oil.");
     expect(text).toContain("Store sections: the standard list (17 sections)");
     expect(text).toContain("Things I filled in myself:");
     expect(text).toContain('"lock it" or "lock the week"');
@@ -240,4 +241,25 @@ describe("the fixed words", () => {
     expect(chunks[chunks.length - 1]).toContain('Say "save it"');
   });
 
+});
+
+describe("tags and staples are capitalized only for display", () => {
+  const weeknights = ["monday", "tuesday", "wednesday", "thursday"] as const;
+
+  test("explainCheck capitalizes cuisines and leaves other tags alone", () => {
+    expect(explainCheck({ kind: "min", count: 1, tag: "mexican" }, weeknights)).toBe("at least 1 dinner a week must be a Mexican dish");
+    expect(explainCheck({ kind: "min", count: 2, tag: "tex-mex" }, weeknights)).toBe("at least 2 dinners a week must be Tex-Mex dishes");
+    expect(explainCheck({ kind: "max", count: 1, tag: "middle-eastern" }, weeknights)).toBe("no more than 1 dinner a week may be a Middle Eastern dish");
+    expect(explainCheck({ kind: "min", count: 1, tag: "italian" }, weeknights)).toBe("at least 1 dinner a week must be an Italian dish");
+    expect(explainCheck({ kind: "min", count: 1, tag: "big-cook" }, weeknights)).toBe("at least 1 dinner a week must be a big-cook dish");
+  });
+
+  test("display helpers", () => {
+    expect(displayTag("mexican")).toBe("Mexican");
+    expect(displayTag("quick")).toBe("quick");
+    expect(displayStaple("Olive oil")).toBe("olive oil");
+    expect(displayStaple("Italian seasoning")).toBe("Italian seasoning");
+    expect(displayStaple("MSG")).toBe("MSG");
+    expect(displayStaple("Salt")).toBe("salt");
+  });
 });

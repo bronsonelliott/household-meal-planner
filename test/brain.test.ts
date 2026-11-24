@@ -812,6 +812,12 @@ describe("prompt.md is a template", () => {
     expect(prompt).toContain("Never say \"from your\nsaved recipes\" about a recipe a source supplied.");
   });
 
+  test("the prompt keeps a weekly draft's reply text empty unless there is a question or a bent rule", () => {
+    const prompt = buildSystemPrompt(BRAIN_SETTINGS).replace(/\s+/g, " ");
+    expect(prompt).toContain("your reply text must be empty unless you have a question for the household or need to explain a rule you had to bend");
+    expect(prompt).toContain("Never describe where a recipe came from, which dishes are new this week");
+  });
+
   test("the prompt describes the three pools, the discovery rule with its number, and the source dish shape", () => {
     const prompt = buildSystemPrompt({ ...BRAIN_SETTINGS, minDiscoveryNights: 2 });
     expect(prompt).toContain("at least 2 dinner(s) in the draft must be a dish that is not on the usual or");

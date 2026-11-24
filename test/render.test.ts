@@ -168,10 +168,10 @@ describe("the grocery list", () => {
         "- spaghetti, 1 lb",
         "",
         "Check before you buy",
-        "- Olive oil",
-        "- Salt",
-        "- Garlic",
-        "- Butter",
+        "- olive oil",
+        "- salt",
+        "- garlic",
+        "- butter",
       ].join("\n"),
     );
   });
@@ -193,7 +193,7 @@ describe("the grocery list", () => {
     expect(text).not.toContain("tortillas");
     expect(text).not.toContain("garlic, 4 cloves");
     expect(text).toContain("Meat & Fish\n- chicken thighs, 2 lb\n- shrimp, 1 lb\n");
-    expect(text.endsWith("Check before you buy\n- Olive oil\n- Salt\n- Garlic\n- Butter")).toBe(true);
+    expect(text.endsWith("Check before you buy\n- olive oil\n- salt\n- garlic\n- butter")).toBe(true);
   });
 
   test("an out or away night contributes no list items", () => {

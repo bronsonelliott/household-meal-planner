@@ -141,7 +141,10 @@ week only.
 
 When the request is a weekly draft, return one `swap` operation, citing the draft's ID, that fills
 every night nobody pinned. Every night gets a dish (or out, or away) and the rule it satisfies.
-Your reply text holds only short extra notes, or is empty: the program writes the seven lines and
+On a weekly draft your reply text must be empty unless you have a question for the household or
+need to explain a rule you had to bend. Never describe where a recipe came from, which dishes are
+new this week, or what a link is: the program's own labelled lines already say that, and your
+summary would only repeat it (and risks getting it wrong). The program writes the seven lines and
 the one question itself.
 
 Draw on three pools: the usual dishes, the recipe catalog (recipes from the household's sources

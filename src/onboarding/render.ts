@@ -9,6 +9,7 @@
 
 import { formatRuleCheck, type Night, type RuleCheck } from "../data/profile.ts";
 import { DEFAULT_GROCERY_SECTIONS } from "../data/profile.ts";
+import { displayStaple, displayTag, displayTags } from "../display-text.ts";
 import { diffProposals, oneLine, proseLine, snapshotSummary, type Proposal, type ProposalDish } from "./state.ts";
 
 // ---------------------------------------------------------------------------------------------
@@ -99,7 +100,10 @@ export function explainCheck(check: RuleCheck, weeknights: readonly Night[]): st
   const nightsText = (target: string) => (target === "weeknights" ? `weeknights (${dayList(weeknights)})` : DAY_NAMES[target as Night]);
   const dinners = (n: number) => `${n} dinner${n === 1 ? "" : "s"}`;
   // "a chicken dish" / "an egg dish"; the plural ("chicken dishes") when more than one.
-  const dish = (tag: string, plural = false) => (plural ? `${tag} dishes` : `${/^[aeiou]/i.test(tag) ? "an" : "a"} ${tag} dish`);
+  const dish = (rawTag: string, plural = false) => {
+    const tag = displayTag(rawTag);
+    return plural ? `${tag} dishes` : `${/^[aeiou]/i.test(tag) ? "an" : "a"} ${tag} dish`;
+  };
   switch (check.kind) {
     case "min":
       return `at least ${dinners(check.count)} a week must be ${dish(check.tag, check.count !== 1)}`;
@@ -146,7 +150,7 @@ export function renderReadBack(proposal: Proposal, options: ReadBackOptions): st
   // Dishes
   const usual = proposal.dishes.filter((dish) => dish.pool === "usual");
   const alsoLike = proposal.dishes.filter((dish) => dish.pool === "also-like");
-  const dishLine = (dish: ProposalDish) => `- ${dish.name}: ${dish.protein}${dish.tags.length > 0 ? `; tags ${dish.tags.join(", ")}` : ""}`;
+  const dishLine = (dish: ProposalDish) => `- ${dish.name}: ${dish.protein}${dish.tags.length > 0 ? `; tags ${displayTags(dish.tags)}` : ""}`;
   const dishBlock: string[] = [];
   if (usual.length > 0) dishBlock.push("Your usual dishes:", ...usual.map(dishLine));
   if (alsoLike.length > 0) dishBlock.push("Dishes you like too:", ...alsoLike.map(dishLine));
@@ -157,7 +161,7 @@ export function renderReadBack(proposal: Proposal, options: ReadBackOptions): st
   const rest: string[] = [];
   if (proposal.dislikes.length > 0) rest.push("Won't eat (I'll note these, but they never rule out a dish by themselves):", ...proposal.dislikes.map((d) => `- ${d.person}: ${d.what}`));
   if (proposal.vetoes.length > 0) rest.push("Never again (I won't plan these):", ...proposal.vetoes.map((v) => `- ${v}`));
-  if (proposal.staples.length > 0) rest.push(`Always in the house: ${proposal.staples.join(", ")}.`);
+  if (proposal.staples.length > 0) rest.push(`Always in the house: ${proposal.staples.map(displayStaple).join(", ")}.`);
   rest.push(
     proposal.sections.length > 0
       ? `Your store sections, in order: ${proposal.sections.join(", ")}.`
@@ -204,14 +208,14 @@ export function renderSnapshot(proposal: Proposal, options: { weeknights: readon
   });
   blocks.push([`Save these rules: ${snapshotSummary(proposal)}? This is exactly what I'd save.`, ...rules]);
 
-  const dish = (d: ProposalDish) => `- ${d.name}: ${d.protein}${d.tags.length > 0 ? `; ${d.tags.join(", ")}` : ""}`;
+  const dish = (d: ProposalDish) => `- ${d.name}: ${d.protein}${d.tags.length > 0 ? `; ${displayTags(d.tags)}` : ""}`;
   const usual = proposal.dishes.filter((d) => d.pool === "usual");
   const alsoLike = proposal.dishes.filter((d) => d.pool === "also-like");
   if (usual.length > 0) blocks.push(["Usual dishes:", ...usual.map(dish)]);
   if (alsoLike.length > 0) blocks.push(["Dishes you like too:", ...alsoLike.map(dish)]);
   if (proposal.dislikes.length > 0) blocks.push(["Won't eat:", ...proposal.dislikes.map((d) => `- ${d.person}: ${d.what}`)]);
   if (proposal.vetoes.length > 0) blocks.push(["Never again:", ...proposal.vetoes.map((v) => `- ${v}`)]);
-  if (proposal.staples.length > 0) blocks.push(["Always in the house:", ...wrapList(proposal.staples, 300)]);
+  if (proposal.staples.length > 0) blocks.push(["Always in the house:", ...wrapList(proposal.staples.map(displayStaple), 300)]);
 
   const rest: string[] = [
     proposal.sections.length > 0 ? `Store sections: ${proposal.sections.join(", ")}.` : "Store sections: the standard list.",

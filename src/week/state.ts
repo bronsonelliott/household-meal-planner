@@ -26,6 +26,7 @@
 
 import { existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { displayStaple } from "../display-text.ts";
 import { writeFileAtomically } from "../data/files.ts";
 import type { ScheduleConfig } from "../config.ts";
 import { NIGHTS, type IngredientLine, type Night } from "../data/profile.ts";
@@ -496,7 +497,7 @@ export function buildGroceryList(week: WeekFile, staples: string[], sections: re
   if (hasAnyDish) {
     for (const staple of staples) {
       if (week.have.some((item) => nameContains(staple, item))) continue;
-      list.push({ section: CHECK_SECTION, key: itemKey(staple), text: staple });
+      list.push({ section: CHECK_SECTION, key: itemKey(staple), text: displayStaple(staple) });
     }
   }
   return list;

@@ -96,7 +96,7 @@ describe("the list built from the live week's lines", () => {
   test("pepper in any form goes under check-before-you-buy when pepper is a staple", () => {
     const lines = listFor(thursday, saturday, ["Pepper"]);
     expect(lines.filter((line) => line.startsWith("Spices"))).toEqual([]);
-    expect(lines).toContain("Check before you buy: Pepper");
+    expect(lines).toContain("Check before you buy: pepper");
     const sameWithLongName = listFor(thursday, saturday, ["Black pepper"]);
     expect(sameWithLongName.filter((line) => line.startsWith("Spices"))).toEqual([]);
   });
@@ -130,6 +130,17 @@ describe("review fixes: grocery merging", () => {
   test("prep words do not keep lines apart", () => {
     const list = listFor([["Vegetables", "onion, chopped, 1"]], [["Vegetables", "onion, diced, 2"]]);
     expect(list).toContain("Vegetables: onion, 3");
+  });
+
+  test("yellow and brown onions merge with plain onion; other onions stay apart", () => {
+    const list = listFor([["Vegetables", "onion, 5"]], [["Vegetables", "yellow onion, 1 large"]]);
+    expect(list).toContain("Vegetables: onion, 5 + 1 large");
+    expect(listFor([["Vegetables", "onion, 2"]], [["Vegetables", "brown onion, 1"]])).toContain("Vegetables: onion, 3");
+    for (const other of ["red onion", "white onion", "sweet onion", "green onion", "scallion", "shallot"]) {
+      const lines = listFor([["Vegetables", "onion, 2"]], [["Vegetables", `${other}, 1`]]);
+      expect(lines).toContain("Vegetables: onion, 2");
+      expect(lines).toContain(`Vegetables: ${other}, 1`);
+    }
   });
 
   test("ranges are summed at both ends", () => {

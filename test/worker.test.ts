@@ -121,10 +121,10 @@ const LOCK_LIST = [
   "- jasmine rice",
   "",
   "Check before you buy",
-  "- Olive oil",
-  "- Salt",
-  "- Garlic",
-  "- Butter",
+  "- olive oil",
+  "- salt",
+  "- garlic",
+  "- butter",
 ].join("\n");
 
 const LOCKED_LOG_ENTRY = [
