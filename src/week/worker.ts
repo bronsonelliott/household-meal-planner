@@ -62,7 +62,7 @@ import {
   type Operation,
 } from "./changeset.ts";
 import { parseInterviewCommand } from "../onboarding/control.ts";
-import { AWAITING_PROFILE_LINE } from "../onboarding/questions.ts";
+import { AWAITING_PROFILE_LINE, CATCHING_UP_LINE } from "../onboarding/questions.ts";
 import type { OnboardingExtractOutcome, OnboardingExtractRequest } from "../onboarding/state.ts";
 import { Interview, type InterviewSettings } from "./interview.ts";
 import { BatchJournal, journalPath, type InterviewInput, type JournalEntry, type JournalRecord, type LogAction, type Step } from "./journal.ts";
@@ -167,6 +167,9 @@ export interface WorkerOptions {
   // Turns the house-rules interview on: with these settings, a household with no profile is
   // interviewed in the chat, and `set up house rules` can start a redo. Left out, the worker needs a profile.
   interview?: InterviewSettings;
+  // The newest local receipt number so far (messenger.receiptHighWater). The interview notes it when
+  // a read-back finishes going out; only a message numbered after that can approve it.
+  receiptHighWater?: () => number;
   // The interview just saved the profile (the id names the save, for anything that must act once).
   onProfileSaved?: (commitId: string, mode: "first-run" | "redo") => void;
   // A brain call failed. The messages stay queued (and unhandled) until flush() is called
@@ -225,7 +228,8 @@ export class Worker {
   constructor(private options: WorkerOptions) {
     this.timers = options.timers ?? DEFAULT_TIMERS;
     this.log = options.log ?? ((line) => console.log(`${new Date().toISOString()} ${line}`));
-    this.journal = new BatchJournal(journalPath(options.paths.stateDir), this.log);
+    // A practice run has a journal of its own, so a real start never replays its turns.
+    this.journal = new BatchJournal(journalPath(options.paths.stateDir, options.interview?.dryRun ?? false), this.log);
     if (options.interview) {
       this.interview = new Interview({
         stateDir: options.paths.stateDir,
@@ -236,6 +240,7 @@ export class Worker {
         now: options.now,
         log: this.log,
         settings: options.interview,
+        receiptHighWater: () => options.receiptHighWater?.() ?? 0,
         onProfileSaved: (commitId, mode) => this.profileSaved(commitId, mode),
       });
     }
@@ -302,7 +307,9 @@ export class Worker {
     }
     const events = this.pending.splice(0);
     if (events.length === 0) return this.idle();
-    return this.run(() => this.handleBatch(events));
+    return this.run(async () => {
+      await this.handleBatch(events);
+    });
   }
 
   // The scheduled draft tick (and its retries). The scheduler calls this; `late` marks a draft posted after
@@ -425,13 +432,28 @@ export class Worker {
     return this.run(async () => {
       const interview = this.interview;
       if (!interview) return;
+      await this.resumeInterviewTurns();
       interview.closeIfProfileAppeared();
       if (!interview.startupNeeded()) return;
       const dry = this.options.interview!.dryRun ? "dry-" : "";
       const id = `iv-start-${dry}${this.options.now()}`;
-      this.journal.append({ type: "interview", id, inboundIds: [], at: new Date(this.options.now()).toISOString(), input: { kind: "startup" } });
+      this.appendInterviewTurn(id, [], { kind: "startup" });
       await this.finishInterviewTurn(this.journal.get(id)!);
     });
+  }
+
+  // Records the start of an interview turn, with the mode (practice or real) it begins in.
+  private appendInterviewTurn(id: string, inboundIds: string[], input: InterviewInput): void {
+    this.journal.append({ type: "interview", id, inboundIds, at: new Date(this.options.now()).toISOString(), input, dryRun: this.options.interview!.dryRun });
+  }
+
+  // A turn that stopped part-way (or whose last write failed) is finished before anything newer
+  // changes the interview, so a later turn never builds on a state its predecessor had not finished.
+  // Throws if one of them cannot be finished.
+  private async resumeInterviewTurns(): Promise<void> {
+    for (const entry of this.journal.unfinished()) {
+      if (entry.interview) await this.finishInterviewTurn(entry);
+    }
   }
 
   // Commands and approvals, each one a turn of its own. Answers waiting for the quiet window are read first, in order.
@@ -442,39 +464,59 @@ export class Worker {
       this.quietTimer = null;
     }
     const waiting = this.pending.splice(0);
-    if (waiting.length > 0) await this.handleBatch(waiting);
+    let held = false;
+    if (waiting.length > 0) held = (await this.handleBatch(waiting)) === "held";
+    // An earlier answer the model could not read yet is still waiting: an approval must not get ahead of it.
+    if (command === "approve" && held) {
+      await this.replyAlone(event, CATCHING_UP_LINE);
+      return;
+    }
+    await this.resumeInterviewTurns();
     if (interview.load().kind === "corrupt") {
       await this.replyAlone(event, "I can't read my setup notes (state/onboarding.json), so I can't start or change the setup. The admin needs to look at it; bun run doctor says what is wrong.");
       return;
     }
     const input: InterviewInput =
       command === "approve"
-        ? { kind: "approve", by: event.memberId, byName: event.memberName, messageId: event.id, repliesToNativeId: event.replyToNativeId ?? null }
+        ? { kind: "approve", by: event.memberId, byName: event.memberName, messageId: event.id, repliesToNativeId: event.replyToNativeId ?? null, receiptSeq: event.receiptSeq ?? null }
         : { kind: "command", command, by: event.memberId, byName: event.memberName, messageId: event.id };
-    this.journal.append({ type: "interview", id: `iv-${event.id}`, inboundIds: [event.id], at: new Date(this.options.now()).toISOString(), input });
+    this.appendInterviewTurn(`iv-${event.id}`, [event.id], input);
     await this.finishBatch(`iv-${event.id}`);
   }
 
-  // Answers to the interview: read by the model once, recorded, then carried out.
-  private async handleInterviewAnswers(events: InboundEvent[]): Promise<void> {
+  // Answers to the interview: read by the model once, recorded, then carried out. Returns "held"
+  // when the model could not read them and they were put back to try again.
+  private async handleInterviewAnswers(events: InboundEvent[]): Promise<"held" | "done"> {
     const interview = this.interview!;
     let input: InterviewInput;
     try {
+      await this.resumeInterviewTurns();
       input = await interview.prepareAnswers(events);
     } catch (error) {
       // Nothing was recorded: put the messages back, unhandled, for the next try.
       this.pending.unshift(...events);
       this.log(`reading the interview answers failed for ${events.length} message(s); holding them: ${(error as Error)?.message ?? error}`);
       this.options.onFailure?.(error, "messages");
-      return;
+      return "held";
     }
-    const id = `iv-${events[0]!.id}`;
-    this.journal.append({ type: "interview", id, inboundIds: events.map((event) => event.id), at: new Date(this.options.now()).toISOString(), input });
-    await this.finishBatch(id);
+    this.appendInterviewTurn(`iv-${events[0]!.id}`, events.map((event) => event.id), input);
+    await this.finishBatch(`iv-${events[0]!.id}`);
+    return "done";
   }
 
   private async finishInterviewTurn(entry: JournalEntry): Promise<void> {
     const id = entry.id;
+    // A turn that is already finished is never carried out again: its saved states are older than
+    // the file's by now. (Its messages are still marked handled, in case that was what was lost.)
+    if (entry.done) {
+      for (const inboundId of entry.interview!.inboundIds) this.options.markHandled(inboundId);
+      return;
+    }
+    // A turn begun in the other mode (practice or real) is not ours to finish.
+    if ((entry.interview!.dryRun ?? false) !== this.options.interview!.dryRun) {
+      this.log(`interview turn ${id} was begun ${entry.interview!.dryRun ? "in a practice run" : "for real"}; leaving it alone`);
+      return;
+    }
     try {
       await this.interview!.run(id);
     } catch (error) {
@@ -539,8 +581,11 @@ export class Worker {
 
   // ----- A batch of messages -----
 
-  private async handleBatch(events: InboundEvent[]): Promise<void> {
-    if (this.interview?.isActive()) return this.handleInterviewAnswers(events);
+  private async handleBatch(events: InboundEvent[]): Promise<"held" | void> {
+    if (this.interview?.isActive()) {
+      const result = await this.handleInterviewAnswers(events);
+      return result === "held" ? "held" : undefined;
+    }
     const id = events[0]!.id;
     let record: Extract<JournalRecord, { type: "batch" }>;
     try {

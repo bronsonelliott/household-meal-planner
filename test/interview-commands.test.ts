@@ -50,7 +50,7 @@ describe("use the sample", () => {
 
     await h.say("Sam", "save it"); // not a reply: the confirm question first
     expect(existsSync(h.profilePath)).toBe(false);
-    expect(h.lastText).toContain("Save these rules:");
+    expect(h.lastSnapshot).toContain("Save these rules:");
     await h.say("Alex", "save it");
     const saved = parseProfile(readFileSync(h.profilePath, "utf8"));
     const sample = loadSampleProfile();
@@ -227,7 +227,7 @@ describe("when the read-back did not reach everyone", () => {
     h.scriptSends([]);
     await h.say("Alex", "looks good", { replyTo: "partial-1" });
     expect(existsSync(h.profilePath)).toBe(false);
-    expect(h.lastText).toContain("Save these rules:");
+    expect(h.lastSnapshot).toContain("Save these rules:");
   });
 
   test("a read-back the chat app is holding for one adult (WhatsApp, outside its 24-hour window) blocks save-now for that adult only", async () => {
@@ -246,7 +246,7 @@ describe("when the read-back did not reach everyone", () => {
     await h.say("Sam", "looks good", { replyTo: "alex-copy" });
     expect(existsSync(h.profilePath)).toBe(false);
     expect(h.state?.phase).toBe("confirming-snapshot");
-    expect(h.lastText).toContain("Save these rules:");
+    expect(h.lastSnapshot).toContain("Save these rules:");
   });
 
   test("replying to your own copy saves at once", async () => {

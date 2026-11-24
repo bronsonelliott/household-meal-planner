@@ -63,6 +63,7 @@ describe("what becomes an event", () => {
         timestamp: 1790806588504,
         mentionsBot: false,
         repliesToBot: false,
+        receiptSeq: 1, // the first message the inbox journaled
       },
     ]);
   });

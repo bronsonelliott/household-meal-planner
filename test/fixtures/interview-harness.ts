@@ -165,6 +165,7 @@ export class InterviewHarness {
       schedule: CHICAGO_SCHEDULE,
       timers,
       log,
+      receiptHighWater: () => messenger?.receiptHighWater() ?? 0,
       interview: {
         botName: "Dinner Bot",
         members: TEST_MEMBERS.map((member) => ({ id: member.id, name: member.name })),
@@ -309,6 +310,13 @@ export class InterviewHarness {
 
   get lastText(): string {
     return this.texts[this.texts.length - 1] ?? "";
+  }
+
+  // The last confirm question as a whole (it may be several posts): from its first part to the end.
+  get lastSnapshot(): string {
+    const texts = this.texts;
+    for (let i = texts.length - 1; i >= 0; i--) if (texts[i]!.includes("Save these rules:")) return texts.slice(i).join("\n");
+    return "";
   }
 
   // The native ID of the most recent post whose text contains `fragment`.

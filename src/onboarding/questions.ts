@@ -54,11 +54,6 @@ export function clarificationMessage(conflict: Conflict): string {
   ].join("\n");
 }
 
-// The confirm question, asked when "save it" can't be tied to the read-back that was just shown.
-export function snapshotQuestion(summary: string): string {
-  return `Save these rules: ${summary}? Say "save it" to save exactly this, or tell me what to change.`;
-}
-
 export const REPHRASE_REQUEST = "I couldn't make sense of that one. Could you say it again in other words?";
 
 export function problemsMessage(problems: string[]): string {
@@ -99,3 +94,6 @@ export const FIRST_RUN_PROFILE_APPEARED = "A house rules file has appeared by ha
 export function awaitingProfileReminder(): string {
   return 'The weekly dinner draft is waiting for your house rules. Say "set up house rules" (or answer my last question) and I\'ll catch up.';
 }
+
+// An approval arrived while an earlier answer is still waiting to be read (the model was unavailable).
+export const CATCHING_UP_LINE = 'I haven\'t finished catching up on an earlier change, so I can\'t save yet. I\'ll sort that out first; then say "save it" again.';

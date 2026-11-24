@@ -76,6 +76,7 @@ if (interviewFile.kind === "corrupt") {
 // moment it goes live. Until it is up, anything that needs to send waits for it here.
 let resolveMessenger: (messenger: Messenger) => void = () => {};
 const messengerReady = new Promise<Messenger>((resolve) => (resolveMessenger = resolve));
+let liveMessenger: Messenger | null = null; // set once it is up, for what must be asked without waiting
 
 const replies = new ReplyTracker(stateDir, Date.now);
 const claudeOptions = {
@@ -132,6 +133,7 @@ const worker: Worker = new Worker({
   now: Date.now,
   quietWindowMs: (profile?.thresholds.batchingWindowSeconds ?? DEFAULT_BATCHING_SECONDS) * 1000,
   schedule: app.schedule,
+  receiptHighWater: () => liveMessenger?.receiptHighWater() ?? 0,
   interview: {
     botName: app.household.botName,
     members: app.members.map((member) => ({ id: member.id, name: member.name })),
@@ -183,6 +185,7 @@ const messenger = await startMessengerOrExit(adapter, {
   },
   log,
 });
+liveMessenger = messenger;
 resolveMessenger(messenger);
 log(`bridge running${app.dryRun ? " (DRY RUN: nothing is sent)" : ""}; data folder ${dataDir}`);
 

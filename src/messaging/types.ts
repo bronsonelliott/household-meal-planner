@@ -62,6 +62,10 @@ export interface InboundEvent {
   mentionsBot: boolean;
   repliesToBot: boolean;
   replyToNativeId?: string; // see IncomingMessage
+  // The message's place in the order they were journaled (inbox.ts), on this machine: it rises with
+  // every message, is never reused and survives restarts. Unlike a platform timestamp it can be
+  // trusted to say what came before what.
+  receiptSeq?: number;
 }
 
 // ---------------------------------------------------------------------------------------

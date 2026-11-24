@@ -159,6 +159,34 @@ export function validateProposal(proposal: Proposal, settings: ValidationSetting
     }
   }
 
+  // 7b. Nights that fixed and require rules already force onto one protein, against the same limit.
+  // "fixed friday chicken" and "require chicken weeknights" both fill nights with chicken; a min
+  // rule only adds nights beyond those. (Rule 7 above covers a min rule on its own.)
+  const proteins = new Set(proposal.dishes.map((dish) => dish.protein.toLowerCase()).filter((protein) => protein !== ""));
+  for (const protein of proteins) {
+    const forced = new Set<Night>();
+    const sources: Rule[] = [];
+    for (const entry of fixed) {
+      if (entry.value.toLowerCase() === protein) {
+        forced.add(entry.night);
+        sources.push(entry.rule);
+      }
+    }
+    for (const need of requires) {
+      if (need.tag.toLowerCase() === protein) {
+        for (const night of need.nights) forced.add(night);
+        sources.push(need.rule);
+      }
+    }
+    if (forced.size === 0) continue;
+    const mins = rules.flatMap((rule) => (rule.check.kind === "min" && rule.check.tag.toLowerCase() === protein ? [rule.check.count] : []));
+    const total = Math.max(forced.size, ...mins);
+    if (total > cap_) {
+      const named = sources.map(quote).join(" and ");
+      problems.push(`${named} would put ${protein} on ${total} nights (${listNights([...forced])} are already set), but the limit is ${cap_} nights for any one protein.`);
+    }
+  }
+
   // 8. New dishes need nights to land on.
   const home = homeNights.length;
   if (settings.minDiscoveryNights > home) {

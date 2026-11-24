@@ -131,8 +131,12 @@ setup), and writes the profile once an adult says "save it". These words work in
 - **`use the sample`** loads the example rules as a proposal. It still has to be approved with
   "save it", and you can change it first.
 - **`looks good`, `save it`, `save`, `yes save`** approve. Replying directly to the bot's read-back
-  saves at once; any other "save it" gets one question ("Save these rules: ...?") first, so what
-  you approve is exactly what you were shown.
+  saves at once; any other "save it" gets one question first ("Save these rules: ...?", listing
+  every rule with its check and the dishes, dislikes, never-agains and staples), so what you
+  approve is exactly what you were shown. A "save it" only counts from an adult who received the
+  whole read-back or question, and only if it was sent after that went out. If the profile file
+  was edited by hand in the meantime, nothing is overwritten. A practice run (dry run) keeps its
+  own journal, `state/batches.dry-run.jsonl`.
 
 **"Awaiting profile"** is what the bot is doing when it has no profile and the first setup is not
 finished (not started, cancelled or half done). It makes no draft attempts, writes no failed-draft

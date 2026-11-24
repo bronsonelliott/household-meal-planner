@@ -74,6 +74,7 @@ test("Telegram: welcome, two adults answer, a native reply to the read-back save
     isAdmin: isTestAdmin,
     send: async (text, key) => (await ready).sendToConversation(text, key),
     markHandled: (id) => messenger?.markHandled(id),
+    receiptHighWater: () => messenger?.receiptHighWater() ?? 0,
     now: clock.now,
     schedule: CHICAGO_SCHEDULE,
     quietWindowMs: 15_000,

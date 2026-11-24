@@ -15,8 +15,9 @@ import type { BatchMessage, OnboardingExtractOutcome, OnboardingState, Proposal 
 import type { IngredientFill, Operation } from "./changeset.ts";
 import type { NightValue, WeekFile } from "./state.ts";
 
-export function journalPath(stateDir: string): string {
-  return join(stateDir, "batches.jsonl");
+// A practice run (dry run) keeps its own journal, so a live start never replays its turns.
+export function journalPath(stateDir: string, dryRun = false): string {
+  return join(stateDir, dryRun ? "batches.dry-run.jsonl" : "batches.jsonl");
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -50,7 +51,8 @@ export type InterviewInput =
   // Answers from the adults, with the model's reading of them (null when only "skip" was said).
   | { kind: "answers"; messages: BatchMessage[]; addressed: boolean; extraction: OnboardingExtractOutcome | null }
   | { kind: "command"; command: "setup" | "cancel" | "sample"; by: string; byName: string; messageId: string }
-  | { kind: "approve"; by: string; byName: string; messageId: string; repliesToNativeId: string | null };
+  // `receiptSeq` is the message's local receipt number (inbox.ts); null if it has none.
+  | { kind: "approve"; by: string; byName: string; messageId: string; repliesToNativeId: string | null; receiptSeq: number | null };
 
 // What one step of a turn produced. The wording of each `label` is the transition it records.
 export type InterviewStep =
@@ -63,7 +65,8 @@ export type InterviewStep =
   // A message to the household and how the send ended (with the chat app's IDs in the outcome).
   | { kind: "said"; label: string; key: string; text: string; outcome: SendOutcome }
   // What the proposal works out to right now (also what a "save" would write).
-  | { kind: "proposal"; proposal: Proposal; previous: Proposal | null; text: string; problems: string[]; flags: string[] }
+  // `baselineFingerprint` is the profile file as it was when `text` was worked out.
+  | { kind: "proposal"; proposal: Proposal; previous: Proposal | null; text: string; problems: string[]; flags: string[]; baselineFingerprint: string }
   | { kind: "commit-prepared"; record: CommitRecord }
   | { kind: "commit-finished"; status: CommitStatus };
 
@@ -84,7 +87,8 @@ export type JournalRecord =
       fills: IngredientFill[];
       brainText: string | null;
     }
-  | { type: "interview"; id: string; inboundIds: string[]; at: string; input: InterviewInput }
+  // `dryRun` is the mode the turn began in; it is only ever carried out in that mode.
+  | { type: "interview"; id: string; inboundIds: string[]; at: string; input: InterviewInput; dryRun?: boolean }
   | { type: "interview-step"; id: string; index: number; step: InterviewStep }
   | { type: "step-done"; id: string; index: number; fragment: string | null }
   | { type: "applied"; id: string; reply: string | null }

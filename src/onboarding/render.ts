@@ -9,7 +9,7 @@
 
 import { formatRuleCheck, type Night, type RuleCheck } from "../data/profile.ts";
 import { DEFAULT_GROCERY_SECTIONS } from "../data/profile.ts";
-import { diffProposals, oneLine, proseLine, type Proposal, type ProposalDish } from "./state.ts";
+import { diffProposals, oneLine, proseLine, snapshotSummary, type Proposal, type ProposalDish } from "./state.ts";
 
 // ---------------------------------------------------------------------------------------------
 // profile.md
@@ -181,6 +181,62 @@ export function renderReadBack(proposal: Proposal, options: ReadBackOptions): st
 
   const footer = `Version ${options.revision}. Nothing is saved yet. Say "save it" to save these, or tell me what to change.`;
   return packChunks(blocks, footer, options.maxChars ?? DEFAULT_CHUNK);
+}
+
+// ---------------------------------------------------------------------------------------------
+// The confirm question
+// ---------------------------------------------------------------------------------------------
+
+// The confirm question, asked when "save it" can't be tied to the read-back that was just shown.
+// It shows what would be saved (every rule in the adults' words with its check explained, then a
+// short list of dishes, dislikes, never-agains and staples), so a "save it" in answer to it
+// approves something they have actually read. Split into chunks if it is long.
+export function renderSnapshot(proposal: Proposal, options: { weeknights: readonly Night[]; maxChars?: number }): string[] {
+  const blocks: string[][] = [];
+
+  const rules: string[] = [];
+  if (proposal.rules.length === 0) rules.push("No house rules. I'll plan freely.");
+  proposal.rules.forEach((rule, i) => {
+    const how = rule.check.kind === "advisory" ? "I'll only keep it in mind (I can't check it)" : `I'll check this: ${explainCheck(rule.check, options.weeknights)}`;
+    rules.push(`${i + 1}. ${rule.prose}\n   ${how}.`);
+  });
+  blocks.push([`Save these rules: ${snapshotSummary(proposal)}? This is exactly what I'd save.`, ...rules]);
+
+  const dish = (d: ProposalDish) => `- ${d.name}: ${d.protein}${d.tags.length > 0 ? `; ${d.tags.join(", ")}` : ""}`;
+  const usual = proposal.dishes.filter((d) => d.pool === "usual");
+  const alsoLike = proposal.dishes.filter((d) => d.pool === "also-like");
+  if (usual.length > 0) blocks.push(["Usual dishes:", ...usual.map(dish)]);
+  if (alsoLike.length > 0) blocks.push(["Dishes you like too:", ...alsoLike.map(dish)]);
+  if (proposal.dislikes.length > 0) blocks.push(["Won't eat:", ...proposal.dislikes.map((d) => `- ${d.person}: ${d.what}`)]);
+  if (proposal.vetoes.length > 0) blocks.push(["Never again:", ...proposal.vetoes.map((v) => `- ${v}`)]);
+  if (proposal.staples.length > 0) blocks.push(["Always in the house:", ...wrapList(proposal.staples, 300)]);
+
+  const rest: string[] = [
+    proposal.sections.length > 0 ? `Store sections: ${proposal.sections.join(", ")}.` : "Store sections: the standard list.",
+    `Lock words: ${proposal.lockWords.map((w) => `"${w}"`).join(" or ")}.`,
+    `Limits: at most ${proposal.thresholds.maxUsualDishesPerWeek} usual dishes a week, no protein on more than ${proposal.thresholds.maxNightsPerProtein} nights, no repeating a dish within ${proposal.thresholds.repeatWindowWeeks} weeks.`,
+  ];
+  blocks.push(rest);
+
+  const footer = 'Say "save it" to save exactly this, or tell me what to change.';
+  return packChunks(blocks, footer, options.maxChars ?? DEFAULT_CHUNK);
+}
+
+// A comma list as several lines, so a long list can be split between chunks.
+function wrapList(items: string[], maxChars: number): string[] {
+  const lines: string[] = [];
+  let current = "";
+  for (const item of items) {
+    const next = current === "" ? item : `${current}, ${item}`;
+    if (current !== "" && next.length > maxChars) {
+      lines.push(`${current},`);
+      current = item;
+    } else {
+      current = next;
+    }
+  }
+  if (current !== "") lines.push(`${current}.`);
+  return lines;
 }
 
 // Packs blocks into message-sized chunks. A block's lines stay together where they fit; a very

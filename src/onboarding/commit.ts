@@ -18,10 +18,12 @@ export interface CommitRecord {
   commitId: string;
   revision: number; // the interview revision that was approved
   mode: Mode;
-  preimageFingerprint: string; // fingerprint of the profile file when the commit began, or "none"
+  preimageFingerprint: string; // fingerprint of the profile file as it was when the adults were shown the proposal, or "none"
   approvedText: string; // the exact bytes that were approved
   approvedFingerprint: string;
   at: string; // ISO time the commit began
+  // Whether this was a practice run. A record is only ever finished in the mode it was made in.
+  dryRun?: boolean;
 }
 
 export type CommitStatus =
@@ -34,17 +36,22 @@ let counter = 0;
 
 // Builds the record to journal. Throws a ProfileError if the approved text would not parse, so a
 // profile the bot could not read back is never committed.
-export function prepareCommit(input: { files: ProfileFiles; mode: Mode; revision: number; approvedText: string; now: Date; commitId?: string }): CommitRecord {
+//
+// `approvedText` and `preimageFingerprint` are what the adults were shown and the profile file as
+// it was then, never anything read now: if the file has changed since, finishCommit sees the
+// difference and writes nothing.
+export function prepareCommit(input: { mode: Mode; revision: number; approvedText: string; preimageFingerprint: string; now: Date; dryRun?: boolean; commitId?: string }): CommitRecord {
   parseProfile(input.approvedText);
   counter += 1;
   return {
     commitId: input.commitId ?? `commit-${input.now.getTime()}-${counter}`,
     revision: input.revision,
     mode: input.mode,
-    preimageFingerprint: fingerprintFile(input.files.profilePath),
+    preimageFingerprint: input.preimageFingerprint,
     approvedText: input.approvedText,
     approvedFingerprint: fingerprintText(input.approvedText),
     at: input.now.toISOString(),
+    dryRun: input.dryRun ?? false,
   };
 }
 
@@ -57,6 +64,9 @@ export interface FinishOptions {
 // Finishes (or re-finishes) a commit. Safe to call any number of times with the same record.
 export function finishCommit(files: ProfileFiles, record: CommitRecord, options: FinishOptions): CommitStatus {
   const log = options.log ?? (() => {});
+  if ((record.dryRun ?? false) !== (options.dryRun ?? false)) {
+    throw new Error(`commit ${record.commitId} was prepared ${record.dryRun ? "in a practice run" : "for real"} and cannot be finished the other way`);
+  }
   if (options.dryRun) {
     log(`dry run: would save the house profile (commit ${record.commitId}, version ${record.revision}, ${record.approvedText.length} characters); nothing was written`);
     return "dry-run";

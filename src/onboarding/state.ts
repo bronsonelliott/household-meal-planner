@@ -104,14 +104,30 @@ export interface ReadBackRecord {
   // The chat app's own IDs of the messages this read-back became, so "save it" can be tied to a
   // reply to it. `memberId` is the adult whose private chat holds it, or null for the shared group.
   nativeIds: Array<{ memberId: string | null; nativeId: string }>;
+  // The exact profile.md bytes this read-back described, and what the profile file looked like
+  // when they were worked out ("none" for a first run). Saving writes these bytes, and only over
+  // that file.
+  text: string;
+  baselineFingerprint: string;
+  // The local receipt number (messaging/inbox.ts) reached when the last chunk finished going out.
+  // Only a message received after it can approve this read-back.
+  deliveredSeq: number | null;
 }
 
 // The confirm question: "Save these rules: ...?" The next "save it" approves exactly this snapshot.
 export interface PendingSnapshot {
   revision: number;
-  summary: string; // the short list shown in the question
+  summary: string; // the short list at the top of the question
+  proposal: Proposal; // what the question showed
+  text: string; // the exact profile.md bytes that "save it" would write
+  baselineFingerprint: string; // the profile file as it was when those bytes were worked out
   profileFingerprint: string; // fingerprint of the profile text that would be saved
   askedAt: string;
+  // Delivery, kept the same way as for a read-back: per adult, with the chat app's IDs.
+  chunkCount: number;
+  deliveries: Record<string, DeliveryStatus>;
+  nativeIds: Array<{ memberId: string | null; nativeId: string }>;
+  deliveredSeq: number | null;
 }
 
 export interface OnboardingState {
@@ -133,6 +149,9 @@ export interface OnboardingState {
   pendingSnapshot: PendingSnapshot | null;
   // The profile file's fingerprint when the interview began: "none" for a first run.
   originalFingerprint: string;
+  // Goes up with every write of this file. A write older than what is on disk is never applied,
+  // so replaying an old turn cannot undo a newer one. Missing in older files, which count as 0.
+  stateSeq: number;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -200,6 +219,7 @@ export function newOnboardingState(mode: Mode, originalFingerprint: string, now:
     lastReadBack: null,
     pendingSnapshot: null,
     originalFingerprint,
+    stateSeq: 0,
   };
 }
 
@@ -609,10 +629,15 @@ export function proposalFingerprint(proposal: Proposal): string {
 // ---------------------------------------------------------------------------------------------
 
 // Records that a read-back for the current revision is going out to these adults.
-export function recordReadBack(state: OnboardingState, proposal: Proposal, memberIds: string[], chunkCount: number, now: Date): OnboardingState {
+export interface ShownProfile {
+  text: string; // the exact bytes the adults were shown
+  baselineFingerprint: string; // the profile file when those bytes were worked out
+}
+
+export function recordReadBack(state: OnboardingState, proposal: Proposal, memberIds: string[], chunkCount: number, now: Date, shown: ShownProfile = { text: "", baselineFingerprint: "" }): OnboardingState {
   const deliveries: Record<string, DeliveryStatus> = {};
   for (const id of memberIds) deliveries[id] = "pending";
-  const record: ReadBackRecord = { revision: state.revision, chunkCount, sentAt: now.toISOString(), proposal, deliveries, nativeIds: [] };
+  const record: ReadBackRecord = { revision: state.revision, chunkCount, sentAt: now.toISOString(), proposal, deliveries, nativeIds: [], text: shown.text, baselineFingerprint: shown.baselineFingerprint, deliveredSeq: null };
   return touch({ ...state, lastReadBack: record, phase: "proposed", pendingSnapshot: null }, now);
 }
 
@@ -632,6 +657,13 @@ export function recordReadBackIds(state: OnboardingState, revision: number, ids:
 
 // Is this message a direct reply to one of the latest read-back's messages, in a chat this adult
 // can see? (In an adult's private chat only the copy sent there counts; in the group, any copy.)
+// Notes the moment the read-back finished going out, as a local receipt number.
+export function recordReadBackDelivered(state: OnboardingState, revision: number, receiptSeq: number, now: Date): OnboardingState {
+  const record = state.lastReadBack;
+  if (!record || record.revision !== revision) return state;
+  return touch({ ...state, lastReadBack: { ...record, deliveredSeq: receiptSeq } }, now);
+}
+
 export function repliesToLatestReadBack(state: OnboardingState, memberId: string, replyToNativeId: string | undefined): boolean {
   if (replyToNativeId === undefined || replyToNativeId === "") return false;
   const ids = state.lastReadBack?.nativeIds ?? [];
@@ -645,16 +677,25 @@ export function readBackDeliveredTo(state: OnboardingState, memberId: string): b
 // Can "looks good" from this adult save straight away? Only when it is a direct reply to the latest
 // read-back, that read-back reached them in full, and nothing has changed since it was built.
 // Otherwise the bot asks the confirm question first.
-export function approvalRoute(state: OnboardingState, input: { memberId: string; repliesToLatestReadBack: boolean }): { route: "save" } | { route: "ask-snapshot"; why: string } {
+export function approvalRoute(
+  state: OnboardingState,
+  input: { memberId: string; repliesToLatestReadBack: boolean; receiptSeq?: number | null },
+): { route: "save" } | { route: "ask-snapshot"; why: string } {
   const record = state.lastReadBack;
   if (!record) return { route: "ask-snapshot", why: "no read-back has been sent yet" };
   if (record.revision !== state.revision) return { route: "ask-snapshot", why: "the rules changed after the last read-back" };
+  if (record.text === "") return { route: "ask-snapshot", why: "I don't have the exact text that was shown" };
   if (!readBackDeliveredTo(state, input.memberId)) return { route: "ask-snapshot", why: "the read-back may not have reached them in full" };
+  if (!arrivedAfter(input.receiptSeq, record.deliveredSeq)) return { route: "ask-snapshot", why: "it arrived before the read-back had finished going out" };
   if (!input.repliesToLatestReadBack) return { route: "ask-snapshot", why: "it wasn't a reply to the read-back" };
   return { route: "save" };
 }
 
-// Short list for the confirm question: counts, then the rules by name.
+// True only when both numbers are known and the message came in after the shown text was out.
+function arrivedAfter(receiptSeq: number | null | undefined, deliveredSeq: number | null): boolean {
+  return typeof receiptSeq === "number" && deliveredSeq !== null && receiptSeq > deliveredSeq;
+}
+
 export function snapshotSummary(proposal: Proposal): string {
   const checked = proposal.rules.filter((rule) => rule.check.kind !== "advisory").length;
   const parts = [
@@ -668,12 +709,55 @@ export function snapshotSummary(proposal: Proposal): string {
 }
 
 // Asks the confirm question for the current revision. `profileText` is exactly what would be saved.
-export function askSnapshot(state: OnboardingState, proposal: Proposal, profileText: string, now: Date): OnboardingState {
-  const snapshot: PendingSnapshot = { revision: state.revision, summary: snapshotSummary(proposal), profileFingerprint: fingerprintText(profileText), askedAt: now.toISOString() };
+export function askSnapshot(
+  state: OnboardingState,
+  proposal: Proposal,
+  profileText: string,
+  now: Date,
+  options: { baselineFingerprint?: string; chunkCount?: number; memberIds?: string[] } = {},
+): OnboardingState {
+  const deliveries: Record<string, DeliveryStatus> = {};
+  for (const id of options.memberIds ?? []) deliveries[id] = "pending";
+  const snapshot: PendingSnapshot = {
+    revision: state.revision,
+    summary: snapshotSummary(proposal),
+    proposal,
+    text: profileText,
+    baselineFingerprint: options.baselineFingerprint ?? "",
+    profileFingerprint: fingerprintText(profileText),
+    askedAt: now.toISOString(),
+    chunkCount: options.chunkCount ?? 1,
+    deliveries,
+    nativeIds: [],
+    deliveredSeq: null,
+  };
   return touch({ ...state, pendingSnapshot: snapshot, phase: "confirming-snapshot" }, now);
 }
 
-// A "save it" after the confirm question approves the snapshot only if nothing changed since.
+export function recordSnapshotDelivery(state: OnboardingState, revision: number, memberId: string, status: DeliveryStatus, now: Date): OnboardingState {
+  const snapshot = state.pendingSnapshot;
+  if (!snapshot || snapshot.revision !== revision) return state;
+  return touch({ ...state, pendingSnapshot: { ...snapshot, deliveries: { ...snapshot.deliveries, [memberId]: status } } }, now);
+}
+
+export function recordSnapshotDelivered(state: OnboardingState, revision: number, ids: ReadBackRecord["nativeIds"], receiptSeq: number, now: Date): OnboardingState {
+  const snapshot = state.pendingSnapshot;
+  if (!snapshot || snapshot.revision !== revision) return state;
+  return touch({ ...state, pendingSnapshot: { ...snapshot, nativeIds: ids, deliveredSeq: receiptSeq } }, now);
+}
+
+// Can this adult's "save it" approve the pending snapshot? Only if the snapshot is for the current
+// rules, every chunk of it reached that adult, and their message came in after it finished going out.
+export function snapshotApproval(state: OnboardingState, input: { memberId: string; receiptSeq?: number | null }): { ok: true } | { ok: false; why: string } {
+  const snapshot = state.pendingSnapshot;
+  if (state.phase !== "confirming-snapshot" || snapshot === null) return { ok: false, why: "no confirm question is open" };
+  if (snapshot.revision !== state.revision) return { ok: false, why: "the rules changed after the confirm question" };
+  if (snapshot.text === "") return { ok: false, why: "I don't have the exact text that was shown" };
+  if (snapshot.deliveries[input.memberId] !== "delivered") return { ok: false, why: "the confirm question may not have reached them in full" };
+  if (!arrivedAfter(input.receiptSeq, snapshot.deliveredSeq)) return { ok: false, why: "it arrived before the confirm question had finished going out" };
+  return { ok: true };
+}
+
 export function snapshotStillValid(state: OnboardingState, profileText: string): boolean {
   const snapshot = state.pendingSnapshot;
   return snapshot !== null && snapshot.revision === state.revision && snapshot.profileFingerprint === fingerprintText(profileText);
@@ -703,6 +787,23 @@ export function loadOnboardingState(path: string): LoadedOnboarding {
   return { kind: "ok", state: parsed as OnboardingState };
 }
 
+// The write number the next save should carry: one more than what is on disk (or than the state
+// in hand, if that is already ahead).
+export function nextStateSeq(path: string, state?: OnboardingState): number {
+  const loaded = loadOnboardingState(path);
+  const onDisk = loaded.kind === "ok" ? loaded.state.stateSeq ?? 0 : 0;
+  return Math.max(onDisk, state?.stateSeq ?? 0) + 1;
+}
+
+// Writes the state only if it is newer than the file. Returns false (and writes nothing) for an
+// old state, such as one a replayed turn carries.
+export function saveIfNewer(path: string, state: OnboardingState): boolean {
+  const loaded = loadOnboardingState(path);
+  if (loaded.kind === "ok" && (loaded.state.stateSeq ?? 0) >= state.stateSeq) return false;
+  saveOnboardingState(path, state);
+  return true;
+}
+
 export function saveOnboardingState(path: string, state: OnboardingState): void {
   mkdirSync(dirname(path), { recursive: true });
   writeFileAtomically(path, JSON.stringify(state, null, 2) + "\n");
@@ -721,6 +822,7 @@ function stateProblem(value: unknown): string | null {
   if (typeof s.revision !== "number" || typeof s.nextFactNumber !== "number" || typeof s.nextConflictNumber !== "number") return "a counter is missing";
   if (typeof s.covered !== "object" || s.covered === null) return `"covered" is missing`;
   if (typeof s.originalFingerprint !== "string") return `"originalFingerprint" is missing`;
+  if (s.stateSeq !== undefined && typeof s.stateSeq !== "number") return `"stateSeq" is not a number`;
   for (const fact of s.facts as unknown[]) {
     const f = fact as Record<string, unknown>;
     if (typeof f?.id !== "string" || !(FACT_KINDS as readonly unknown[]).includes(f.kind) || !(TOPICS as readonly unknown[]).includes(f.topic)) return "a fact is damaged";

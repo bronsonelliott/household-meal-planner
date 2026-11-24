@@ -93,6 +93,20 @@ describe("validateProposal", () => {
     expect(check(p).problems.join(" ")).toContain("only 0 nights are left");
   });
 
+  test("nights forced onto one protein by require and fixed rules count against the protein limit", () => {
+    // Four weeknights of chicken, with the default limit of two nights for any one protein.
+    const require: [string, RuleCheck] = ["Chicken every weeknight.", { kind: "require", tag: "chicken", nights: "weeknights" }];
+    expect(check(proposal([require], [TACOS])).problems[0]).toContain("would put chicken on 4 nights");
+    // Three nights fixed to chicken.
+    const fixed = (night: "monday" | "tuesday" | "wednesday"): [string, RuleCheck] => [`${night} is chicken`, { kind: "fixed", night, value: "chicken" }];
+    expect(check(proposal([fixed("monday"), fixed("tuesday"), fixed("wednesday")], [TACOS])).problems.join(" ")).toContain("chicken on 3 nights");
+    // A fixed night and a require on the same night is one night, not two; a min rule only adds nights beyond them.
+    const oneNight: [string, RuleCheck] = ["Chicken on Monday.", { kind: "require", tag: "chicken", nights: "monday" }];
+    expect(check(proposal([oneNight, fixed("monday"), ["Chicken twice.", { kind: "min", tag: "chicken", count: 2 }]], [TACOS])).problems).toEqual([]);
+    // With the limit raised, four is fine.
+    expect(check(proposal([require], [TACOS], { ...DEFAULT_THRESHOLDS, maxNightsPerProtein: 4 })).problems).toEqual([]);
+  });
+
   test("a protein asked for more nights than any one protein may be served", () => {
     const p = proposal([["Chicken four nights.", { kind: "min", tag: "chicken", count: 4 }]], [TACOS, dish("Roast chicken", "chicken")]);
     expect(check(p).problems[0]).toContain("limit is 2 nights");

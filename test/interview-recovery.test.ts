@@ -208,7 +208,7 @@ describe("a crash in the middle of a turn", () => {
     expect(h.state?.phase).toBe("proposed");
     // Nothing approved before applies to the new read-back.
     await h.say("Alex", "save it");
-    expect(h.lastText).toContain("Save these rules:");
+    expect(h.lastSnapshot).toContain("Save these rules:");
     expect(readFileSync(h.profilePath, "utf8")).toBe(byHand);
   });
 });

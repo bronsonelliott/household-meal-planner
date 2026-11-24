@@ -1,9 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { parseProfile } from "../src/data/profile.ts";
-import { clarificationMessage, questionFor, snapshotQuestion, TOPIC_QUESTIONS, welcomeMessage } from "../src/onboarding/questions.ts";
-import { explainCheck, renderProfile, renderReadBack } from "../src/onboarding/render.ts";
+import { clarificationMessage, questionFor, TOPIC_QUESTIONS, welcomeMessage } from "../src/onboarding/questions.ts";
+import { explainCheck, renderProfile, renderReadBack, renderSnapshot } from "../src/onboarding/render.ts";
 import { computeProposal, TOPICS, type Conflict, type Proposal } from "../src/onboarding/state.ts";
 import { NOW, add, applied, extraction, freshState, msg } from "./fixtures/onboarding-fixtures.ts";
+
+// A proposal with nothing in it but the standard defaults.
+function emptyProposal(): Proposal {
+  return computeProposal(freshState());
+}
 
 const WEEKNIGHTS = ["monday", "tuesday", "wednesday", "thursday"] as const;
 
@@ -166,7 +171,39 @@ describe("the fixed words", () => {
     expect(text).toContain('- Sam: "we cook Fridays"');
   });
 
-  test("the confirm question lists what will be saved", () => {
-    expect(snapshotQuestion("3 rules (2 checked), 2 dishes")).toBe('Save these rules: 3 rules (2 checked), 2 dishes? Say "save it" to save exactly this, or tell me what to change.');
+  test("the confirm question shows each rule in the adults' words with its check explained, then the lists", () => {
+    const proposal = {
+      ...emptyProposal(),
+      rules: [
+        { prose: "Friday is eating out.", check: { kind: "fixed", night: "friday", value: "out" } as const, who: "Alex" },
+        { prose: "Be kind to the kids' palates", check: { kind: "advisory" } as const, who: "Sam" },
+      ],
+      dishes: [{ name: "Chicken tacos", protein: "chicken", tags: ["quick"], pool: "usual" as const, ingredients: [] }],
+      dislikes: [{ person: "Sam", what: "olives" }],
+      vetoes: ["Tuna casserole"],
+      staples: ["rice", "olive oil"],
+    };
+    const chunks = renderSnapshot(proposal, { weeknights: ["monday", "tuesday", "wednesday", "thursday"] });
+    const text = chunks.join("\n");
+    expect(chunks).toHaveLength(1);
+    expect(text).toContain("Save these rules: 2 rules (1 checked), 1 dish");
+    expect(text).toContain("1. Friday is eating out.");
+    expect(text).toContain("I'll check this: Friday is always eating out");
+    expect(text).toContain("I'll only keep it in mind");
+    expect(text).toContain("- Chicken tacos: chicken; quick");
+    expect(text).toContain("- Sam: olives");
+    expect(text).toContain("- Tuna casserole");
+    expect(text).toContain("rice, olive oil");
+    expect(text).toContain('Say "save it" to save exactly this');
   });
+
+  test("a long confirm question is split into numbered chunks, never inside a line", () => {
+    const rules = Array.from({ length: 12 }, (_, i) => ({ prose: `House rule number ${i + 1} with some words`, check: { kind: "max", tag: `tag${i}`, count: 2 } as const, who: "Alex" }));
+    const chunks = renderSnapshot({ ...emptyProposal(), rules }, { weeknights: ["monday"], maxChars: 400 });
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks[0]).toStartWith("(1 of ");
+    expect(chunks.join("\n")).toContain("House rule number 12 with some words");
+    expect(chunks[chunks.length - 1]).toContain('Say "save it"');
+  });
+
 });

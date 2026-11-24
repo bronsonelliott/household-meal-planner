@@ -14,11 +14,17 @@ import {
   diffProposals,
   isSkipMessage,
   loadOnboardingState,
+  nextStateSeq,
+  saveIfNewer,
   nextStep,
   onboardingStatePath,
   proposalFromProfile,
   recordDelivery,
   recordReadBack,
+  recordReadBackDelivered,
+  recordSnapshotDelivered,
+  recordSnapshotDelivery,
+  snapshotApproval,
   saveOnboardingState,
   snapshotStillValid,
   startAsking,
@@ -265,31 +271,65 @@ describe("the proposal", () => {
   });
 });
 
+describe("the state file never goes backwards", () => {
+  test("a state no newer than the file is not written, so a replayed old turn cannot undo a newer one", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "onboarding-seq-")), "onboarding.json");
+    const first = { ...freshState(), stateSeq: nextStateSeq(path) };
+    expect(saveIfNewer(path, first)).toBe(true);
+    const newer = { ...first, revision: 5, stateSeq: nextStateSeq(path, first) };
+    expect(saveIfNewer(path, newer)).toBe(true);
+    expect(saveIfNewer(path, first)).toBe(false); // the replay
+    expect(saveIfNewer(path, newer)).toBe(false); // the same write again changes nothing
+    const loaded = loadOnboardingState(path);
+    expect(loaded.kind === "ok" && loaded.state.revision).toBe(5);
+  });
+});
+
 describe("read-backs and approval", () => {
   function proposedState() {
     const m = msg("m1", "Alex", "Friday is eating out.");
     let s = applied(freshState(), [m], extraction({ additions: [add(m, "nights", "Friday is eating out.", FRIDAY_OUT)] }));
-    s = recordReadBack(s, computeProposal(s), ["alex", "sam"], 2, NOW);
-    return s;
+    s = recordReadBack(s, computeProposal(s), ["alex", "sam"], 2, NOW, { text: "shown bytes", baselineFingerprint: "none" });
+    return recordReadBackDelivered(s, s.revision, 10, NOW);
   }
 
   test("a direct reply to a fully delivered, unchanged read-back saves straight away", () => {
     let s = proposedState();
     s = recordDelivery(s, s.revision, "alex", "delivered", NOW);
-    expect(approvalRoute(s, { memberId: "alex", repliesToLatestReadBack: true })).toEqual({ route: "save" });
+    expect(approvalRoute(s, { memberId: "alex", repliesToLatestReadBack: true, receiptSeq: 11 })).toEqual({ route: "save" });
   });
 
   test("each missing condition sends the adult to the confirm question", () => {
     let s = proposedState();
-    expect(approvalRoute(s, { memberId: "alex", repliesToLatestReadBack: true }).route).toBe("ask-snapshot"); // not delivered
+    const ask = (memberId: string, repliesToLatestReadBack: boolean, receiptSeq: number | null = 11) => approvalRoute(s, { memberId, repliesToLatestReadBack, receiptSeq }).route;
+    expect(ask("alex", true)).toBe("ask-snapshot"); // not delivered
     s = recordDelivery(s, s.revision, "alex", "queued", NOW);
-    expect(approvalRoute(s, { memberId: "alex", repliesToLatestReadBack: true }).route).toBe("ask-snapshot"); // queued is not delivered
+    expect(ask("alex", true)).toBe("ask-snapshot"); // queued is not delivered
     s = recordDelivery(s, s.revision, "alex", "delivered", NOW);
-    expect(approvalRoute(s, { memberId: "alex", repliesToLatestReadBack: false }).route).toBe("ask-snapshot"); // not a reply
-    expect(approvalRoute(s, { memberId: "sam", repliesToLatestReadBack: true }).route).toBe("ask-snapshot"); // Sam got nothing
+    expect(ask("alex", false)).toBe("ask-snapshot"); // not a reply
+    expect(ask("sam", true)).toBe("ask-snapshot"); // Sam got nothing
+    expect(ask("alex", true, 10)).toBe("ask-snapshot"); // arrived before the read-back finished going out
+    expect(ask("alex", true, 3)).toBe("ask-snapshot");
+    expect(ask("alex", true, null)).toBe("ask-snapshot"); // no receipt number: cannot tell
+    expect(ask("alex", true, 11)).toBe("save");
     const m = msg("m2", "Sam", "add pizza");
     const changed = applied(s, [m], extraction({ additions: [add(m, "dinners", "add pizza", { kind: "dish", name: "Pizza", protein: "vegetarian", tags: [], pool: "usual" })] }));
-    expect(approvalRoute(changed, { memberId: "alex", repliesToLatestReadBack: true })).toMatchObject({ route: "ask-snapshot", why: expect.stringContaining("changed") });
+    expect(approvalRoute(changed, { memberId: "alex", repliesToLatestReadBack: true, receiptSeq: 11 })).toMatchObject({ route: "ask-snapshot", why: expect.stringContaining("changed") });
+  });
+
+  test("the confirm question approves only for an adult who got every part of it, after it went out", () => {
+    const s0 = proposedState();
+    const proposal = computeProposal(s0);
+    let s = askSnapshot(s0, proposal, "bytes", NOW, { baselineFingerprint: "none", chunkCount: 2, memberIds: ["alex", "sam"] });
+    const may = (memberId: string, receiptSeq: number | null) => snapshotApproval(s, { memberId, receiptSeq }).ok;
+    expect(may("alex", 50)).toBe(false); // nothing delivered yet
+    s = recordSnapshotDelivery(s, s.revision, "alex", "delivered", NOW);
+    s = recordSnapshotDelivery(s, s.revision, "sam", "partial", NOW);
+    s = recordSnapshotDelivered(s, s.revision, [], 40, NOW);
+    expect(may("alex", 41)).toBe(true);
+    expect(may("alex", 40)).toBe(false); // it was already there when the question finished going out
+    expect(may("alex", null)).toBe(false);
+    expect(may("sam", 41)).toBe(false); // Sam may have missed a chunk
   });
 
   test("a late delivery report about an older read-back is ignored", () => {

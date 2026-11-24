@@ -42,10 +42,9 @@ import {
   problemsMessage,
   questionFor,
   savedMessage,
-  snapshotQuestion,
   welcomeMessage,
 } from "../onboarding/questions.ts";
-import { renderProfile, renderReadBack } from "../onboarding/render.ts";
+import { renderProfile, renderReadBack, renderSnapshot } from "../onboarding/render.ts";
 import {
   applyExtraction,
   applySkips,
@@ -57,16 +56,20 @@ import {
   loadOnboardingState,
   markConflictAsked,
   newOnboardingState,
+  nextStateSeq,
   nextStep,
   nextTopic,
   onboardingStatePath,
   proposalFromProfile,
   recordDelivery,
   recordReadBack,
+  recordReadBackDelivered,
   recordReadBackIds,
+  recordSnapshotDelivered,
+  recordSnapshotDelivery,
   repliesToLatestReadBack,
-  saveOnboardingState,
-  snapshotStillValid,
+  saveIfNewer,
+  snapshotApproval,
   startAsking,
   withPhase,
   type BatchMessage,
@@ -99,6 +102,8 @@ export interface InterviewDeps {
   now: () => number;
   log: (line: string) => void;
   settings: InterviewSettings;
+  // The newest local receipt number so far: what a message must beat to count as coming after something was shown.
+  receiptHighWater: () => number;
   // The profile has just been saved (also called again if a crash made the turn run twice).
   onProfileSaved: (commitId: string, mode: Mode) => void;
 }
@@ -193,7 +198,8 @@ export class Interview {
     const status = readProfileStatus(this.profilePath);
     const loaded = this.load();
     if (status.kind === "ready" && loaded.kind === "ok" && loaded.state.mode === "first-run" && isActivePhase(loaded.state.phase) && loaded.state.phase !== "committing") {
-      saveOnboardingState(this.statePath, cancelOnboarding(loaded.state, this.now));
+      const cancelled = cancelOnboarding(loaded.state, this.now);
+      saveIfNewer(this.statePath, { ...cancelled, stateSeq: nextStateSeq(this.statePath, cancelled) });
       this.deps.log("a profile appeared while the first-run interview was open; the interview was closed");
     }
   }
@@ -203,6 +209,13 @@ export class Interview {
   async run(id: string): Promise<void> {
     const entry = this.deps.journal.get(id);
     if (!entry?.interview) return;
+    // A finished turn is never carried out again: replaying it would write its older states over newer ones.
+    if (entry.done) return;
+    // A turn is only carried out in the mode (practice or real) it began in.
+    if ((entry.interview.dryRun ?? false) !== this.deps.settings.dryRun) {
+      this.deps.log(`interview turn ${id} was begun in the other mode (practice or real); leaving it alone`);
+      return;
+    }
     const run = new Run(id, entry, this.deps.journal);
     const input = entry.interview.input;
     switch (input.kind) {
@@ -238,9 +251,11 @@ export class Interview {
 
   // Records a new state, and writes it. Returns the recorded state (which on a replay is the one
   // from the journal, not a new calculation).
+  // Each recorded state carries a write number one above the file's, and a state no newer than
+  // the file's is not written, so replaying an older turn can never undo a newer one.
   private async setState(run: Run, label: string, state: OnboardingState, changed?: boolean): Promise<OnboardingState> {
-    const step = await run.step(() => ({ kind: "state" as const, label, state, ...(changed !== undefined ? { changed } : {}) }));
-    saveOnboardingState(this.statePath, step.state);
+    const step = await run.step(() => ({ kind: "state" as const, label, state: { ...state, stateSeq: nextStateSeq(this.statePath, state) }, ...(changed !== undefined ? { changed } : {}) }));
+    if (!saveIfNewer(this.statePath, step.state)) this.deps.log(`interview: a saved state from "${label}" was older than the file's, so it was not written`);
     return step.state;
   }
 
@@ -259,12 +274,14 @@ export class Interview {
   private proposal(run: Run, state: OnboardingState): Promise<ProposalStep> {
     return run.step(() => {
       const status = readProfileStatus(this.profilePath);
+      // The file as these bytes are worked out from it: saving is only allowed over this very file.
+      const baselineFingerprint = fingerprintFile(this.profilePath);
       const existing: HouseProfile | undefined = status.kind === "ready" ? status.profile : undefined;
       // A redo carries over what the household tuned by hand (lock words, limits, ingredient lines).
       const proposal = computeProposal(state, state.mode === "redo" ? existing : undefined);
       const validation = validateProposal(proposal, { weeknights: this.deps.settings.weeknights, minDiscoveryNights: this.deps.settings.minDiscoveryNights });
       const previous = state.lastReadBack?.proposal ?? (state.mode === "redo" && existing ? proposalFromProfile(existing) : null);
-      return { kind: "proposal" as const, proposal, previous, text: renderProfile(proposal), problems: validation.problems, flags: validation.flags };
+      return { kind: "proposal" as const, proposal, previous, text: renderProfile(proposal), problems: validation.problems, flags: validation.flags, baselineFingerprint };
     });
   }
 
@@ -298,12 +315,14 @@ export class Interview {
       flags: p.flags,
       mode: state.mode,
     });
-    let current = await this.setState(run, "read-back-recorded", recordReadBack(state, p.proposal, this.memberIds(), chunks.length, this.now));
+    let current = await this.setState(run, "read-back-recorded", recordReadBack(state, p.proposal, this.memberIds(), chunks.length, this.now, { text: p.text, baselineFingerprint: p.baselineFingerprint }));
     const outcomes: SendOutcome[] = [];
     for (const chunk of chunks) outcomes.push(await this.say(run, "read-back", chunk));
     const { ids, deliveries } = summarizeSends(outcomes, this.memberIds());
     current = recordReadBackIds(current, state.revision, ids, this.now);
     for (const [memberId, status] of Object.entries(deliveries)) current = recordDelivery(current, state.revision, memberId, status, this.now);
+    // Only a message received after this moment can approve what was just shown.
+    current = recordReadBackDelivered(current, state.revision, this.deps.receiptHighWater(), this.now);
     return this.setState(run, "read-back-delivered", current);
   }
 
@@ -440,32 +459,54 @@ export class Interview {
       return;
     }
 
+    // What this adult approves is what they were shown, in full, before their message arrived:
+    // the confirm question if one is open, else the read-back they replied to.
+    let shown: { text: string; baselineFingerprint: string } | null = null;
+    const receiptSeq = input.receiptSeq ?? null;
+    const snapshot = state.pendingSnapshot;
+    if (state.phase === "confirming-snapshot" && snapshot) {
+      const check = snapshotApproval(state, { memberId: input.by, receiptSeq });
+      if (check.ok) shown = { text: snapshot.text, baselineFingerprint: snapshot.baselineFingerprint };
+      else this.deps.log(`interview: that "save it" does not approve the confirm question, because ${check.why}`);
+    }
+    if (!shown) {
+      const route = approvalRoute(state, { memberId: input.by, repliesToLatestReadBack: repliesToLatestReadBack(state, input.by, input.repliesToNativeId ?? undefined), receiptSeq });
+      if (route.route === "save") shown = { text: state.lastReadBack!.text, baselineFingerprint: state.lastReadBack!.baselineFingerprint };
+      else this.deps.log(`interview: asking the confirm question first, because ${route.why}`);
+    }
+    if (!shown) {
+      await this.askSnapshot(run, state);
+      return;
+    }
+    await this.commit(run, state, shown, input.byName);
+  }
+
+  // The confirm question: shows what would be saved (the rules and the lists), and notes how each
+  // adult received it. Only an adult who got every part of it, and who answers after it went out,
+  // can approve it.
+  private async askSnapshot(run: Run, state: OnboardingState): Promise<void> {
     const p = await this.proposal(run, state);
     if (p.problems.length > 0) {
       await this.say(run, "problems", problemsMessage(p.problems));
       return;
     }
-
-    // "save it" after the confirm question approves exactly what that question showed, if nothing changed.
-    let save = state.phase === "confirming-snapshot" && snapshotStillValid(state, p.text);
-    if (!save) {
-      const route = approvalRoute(state, { memberId: input.by, repliesToLatestReadBack: repliesToLatestReadBack(state, input.by, input.repliesToNativeId ?? undefined) });
-      if (route.route === "save") save = true;
-      else this.deps.log(`interview: asking the confirm question first, because ${route.why}`);
-    }
-    if (!save) {
-      const asked = await this.setState(run, "snapshot-asked", askSnapshot(state, p.proposal, p.text, this.now));
-      await this.say(run, "snapshot", snapshotQuestion(asked.pendingSnapshot!.summary));
-      return;
-    }
-    await this.commit(run, state, p, input.byName);
+    const chunks = renderSnapshot(p.proposal, { weeknights: this.deps.settings.weeknights });
+    const asked = await this.setState(run, "snapshot-asked", askSnapshot(state, p.proposal, p.text, this.now, { baselineFingerprint: p.baselineFingerprint, chunkCount: chunks.length, memberIds: this.memberIds() }));
+    const outcomes: SendOutcome[] = [];
+    for (const chunk of chunks) outcomes.push(await this.say(run, "snapshot", chunk));
+    const { ids, deliveries } = summarizeSends(outcomes, this.memberIds());
+    let current = asked;
+    for (const [memberId, status] of Object.entries(deliveries)) current = recordSnapshotDelivery(current, state.revision, memberId, status, this.now);
+    current = recordSnapshotDelivered(current, state.revision, ids, this.deps.receiptHighWater(), this.now);
+    await this.setState(run, "snapshot-delivered", current);
   }
 
   // Journal the commit before it happens, then finish it. Both steps are safe to run again.
-  private async commit(run: Run, state: OnboardingState, p: ProposalStep, byName: string): Promise<void> {
+  // It writes exactly the bytes the adults were shown, and only over the file they were shown it against.
+  private async commit(run: Run, state: OnboardingState, shown: { text: string; baselineFingerprint: string }, byName: string): Promise<void> {
     const prepared = await run.step(() => ({
       kind: "commit-prepared" as const,
-      record: prepareCommit({ files: this.deps.profileFiles, mode: state.mode, revision: state.revision, approvedText: p.text, now: this.now }),
+      record: prepareCommit({ mode: state.mode, revision: state.revision, approvedText: shown.text, preimageFingerprint: shown.baselineFingerprint, now: this.now, dryRun: this.deps.settings.dryRun }),
     }));
     const committing = await this.setState(run, "commit-begun", withPhase(state, "committing", this.now));
     const finished = await run.step(() => ({

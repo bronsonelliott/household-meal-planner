@@ -24,6 +24,10 @@ export class Inbox {
   // Every message ever journaled, in arrival order.
   private received = new Map<string, IncomingMessage>();
   private handled = new Set<string>();
+  // Each message's receipt number: 1, 2, 3... in the order journaled. Written into the journal so
+  // it survives a restart (older journals without numbers are numbered by their line order).
+  private seqs = new Map<string, number>();
+  private lastSeq = 0;
 
   constructor(
     stateDir: string,
@@ -39,9 +43,22 @@ export class Inbox {
   async record(message: IncomingMessage): Promise<{ id: string; isNew: boolean }> {
     const id = journalId(message);
     if (this.received.has(id)) return { id, isNew: false };
-    appendLineDurably(this.path, { type: "received", id, at: new Date().toISOString(), message });
+    const seq = this.lastSeq + 1;
+    appendLineDurably(this.path, { type: "received", id, at: new Date().toISOString(), seq, message });
+    this.lastSeq = seq;
+    this.seqs.set(id, seq);
     this.received.set(id, message);
     return { id, isNew: true };
+  }
+
+  // The receipt number of a journaled message.
+  seqOf(id: string): number | undefined {
+    return this.seqs.get(id);
+  }
+
+  // The newest receipt number handed out so far (0 before any message).
+  highWater(): number {
+    return this.lastSeq;
   }
 
   get(id: string): IncomingMessage | undefined {
@@ -84,7 +101,12 @@ export class Inbox {
         this.log("inbox journal: skipped an unreadable line");
         continue;
       }
-      if (record.type === "received") this.received.set(record.id, record.message);
+      if (record.type === "received") {
+        this.received.set(record.id, record.message);
+        const seq = typeof record.seq === "number" ? record.seq : this.lastSeq + 1;
+        this.seqs.set(record.id, seq);
+        this.lastSeq = Math.max(this.lastSeq, seq);
+      }
       if (record.type === "handled") this.handled.add(record.id);
     }
   }

@@ -49,6 +49,8 @@ export interface Messenger {
   sendToMember(memberId: string, text: string, key?: string): Promise<SendOutcome>;
   // The worker is done with this inbound message (reply sent, or a deliberate silence logged).
   markHandled(inboundId: string): void;
+  // The newest local receipt number handed out so far (see InboundEvent.receiptSeq).
+  receiptHighWater(): number;
   checkHealth(): Promise<HealthResult>;
   stop(): Promise<void>;
 }
@@ -131,7 +133,7 @@ export async function startMessenger(adapter: MessagingAdapter, options: Messeng
       const leftUnhandled = (error: unknown) =>
         log(`worker hand-off failed for ${event.id}; it stays unhandled: ${(error as Error)?.message ?? error}`);
       try {
-        const result = options.onEvent(event);
+        const result = options.onEvent({ ...event, receiptSeq: inbox.seqOf(event.id) });
         if (result instanceof Promise) result.catch(leftUnhandled);
       } catch (error) {
         leftUnhandled(error);
@@ -222,6 +224,7 @@ export async function startMessenger(adapter: MessagingAdapter, options: Messeng
     return {
       sendToConversation: (text, key) => sender.send(text, { kind: "conversation" }, key),
       sendToMember: (memberId, text, key) => sender.send(text, { kind: "member", memberId }, key),
+      receiptHighWater: () => inbox.highWater(),
       markHandled: (inboundId) => {
         inbox.markHandled(inboundId, "handled by the worker");
         acknowledge(inboundId, "handled");
