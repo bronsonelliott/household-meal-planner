@@ -15,6 +15,7 @@
 // Settings come from config.toml (src/config.ts), found through HMP_CONFIG (default ./config.toml);
 // HMP_DRY_RUN, HMP_STATE_DIR and HMP_DATA_DIR override it for tests and dry runs.
 
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { createBrain } from "./brain/index.ts";
 import { createClaudeCaller } from "./brain/claude.ts";
@@ -41,6 +42,8 @@ function log(line: string): void {
 const app = loadConfig();
 const dataDir = app.paths.dataDir;
 const stateDir = app.paths.stateDir;
+// A fresh install has neither folder yet.
+for (const folder of [dataDir, join(dataDir, "weeks"), stateDir]) mkdirSync(folder, { recursive: true });
 // The chat app. This is the only place that picks one; everything below sees the shared contract.
 const adapter = createAdapter(app);
 
