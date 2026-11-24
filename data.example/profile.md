@@ -2,9 +2,11 @@
 
 Hand-editable. The dinner agent reads this file before every draft and writes to it only
 when someone in the group uses explicit rule words ("add a rule," "never," "always," "from
-now on," "add X to the usual dishes"). Keep the eight `##` headings exactly as they are; the
-agent refuses to run if one is missing. Anything under a heading it does not know is ignored.
-`## Grocery Sections` is optional (see below); the other eight are required.
+now on," "add X to the usual dishes"). Keep the eight required `##` headings (Rules, Usual Dishes,
+Also-Like Dishes, Staples, Dislikes, Vetoes, Lock Words, Thresholds) exactly as they are; the
+agent refuses to run if one is missing. `## Grocery Sections` is a ninth heading and is
+optional (see below). Anything under a heading it does not know is ignored.
+Not sure what rules to write? See `docs/house-rules.md` for 30 ready-to-copy ones.
 
 ## Rules
 
@@ -12,7 +14,8 @@ Order matters: when the rules cannot all fit, the agent drops them from the bott
 Each rule ends with the check the agent runs, in square brackets:
 `[min TAG N]` at least N nights tagged TAG, `[max TAG N]` at most N, `[fixed DAY VALUE]`
 that night is always VALUE, `[require TAG NIGHTS]` / `[forbid TAG NIGHTS]` where NIGHTS is
-`weeknights` (Monday to Thursday) or a day name, and `[advisory]` for a rule the agent only
+`weeknights` (set by `planning.weeknights` in config.toml; Monday to
+Thursday by default) or a day name, and `[advisory]` for a rule the agent only
 keeps in mind and does not check. A rule with no brackets is treated as advisory.
 
 - Friday is eating out. [fixed friday out]

@@ -52,6 +52,9 @@ The profile also holds your usual dishes and the ingredients you buy for them, t
 want again, how your grocery list is laid out, and the staples you check before shopping. The full
 format is in [Your household profile](#your-household-profile).
 
+Not sure where to start? Pick from 30 ready-made rules in the
+[house-rules cookbook](docs/house-rules.md).
+
 ## What it looks like
 
 On draft day (Friday afternoon by default) the bot posts:
@@ -370,8 +373,8 @@ them, set `mode = "household-dms"`; see
 
 `data/profile.md` is a plain text file you edit by hand. The bot reads it before every draft. Run
 `bun run doctor` after editing: it reads the whole file and tells you, in plain words, what it
-cannot understand. The example in `data.example/profile.md` is the best starting point; here is
-how it works.
+cannot understand. The example in `data.example/profile.md` is the best starting point, and the
+[house-rules cookbook](docs/house-rules.md) has ready-to-copy rules; here is how it works.
 
 - **Headings.** Each part starts with a `##` heading, and the names must stay exactly as they are:
   Rules, Usual Dishes, Also-Like Dishes, Staples, Dislikes, Vetoes, Lock Words and Thresholds. A
